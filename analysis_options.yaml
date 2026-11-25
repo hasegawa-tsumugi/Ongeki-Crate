@@ -1,0 +1,15 @@
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - presets/**
+    # 本地补丁版 fluid_glass（见 third_party/fluid_glass/PATCHES.md）。
+    # 上游代码不跟本仓库的 lint 规则走，改它只会让下次同步上游更难。
+    - third_party/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    avoid_print: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true

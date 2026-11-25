@@ -1,0 +1,55 @@
+songquery 字体与第三方许可
+
+官网视觉素材（2026-11-02 获取，仅个人自用，非 SEGA 官方应用）
+来源：https://ongeki.sega.jp/assets/css/style.css
+纹理：https://ongeki.sega.jp/assets/img/common/bg_mesh.webp
+纹理：https://ongeki.sega.jp/assets/img/common/bg_circuit.webp
+官网图像与品牌版权归 © SEGA 所有；不据此主张获得公开分发授权。
+M PLUS 1p Bold / Medium 原始字体来自官网 assets/fonts/MPLUS1p-*.ttf，未修改。
+M PLUS 1p 许可：SIL OFL 1.1，Copyright 2016 The M+ Project Authors。
+原始许可全文见 LICENSE-MPLUS1p.txt，原文获取自
+https://raw.githubusercontent.com/google/fonts/main/ofl/mplus1p/OFL.txt
+默认官网方案不再使用游戏描出圆体；旧版方案与旧字体文件保留。
+==========================
+
+本软件使用了 MiSans 字体。
+
+本文件随应用分发（APK 内 assets/fonts/），亦可在应用「关于 → 查看许可全文」
+阅读。Josefin Sans 的 OFL 1.1 许可全文见同目录 LICENSE-JosefinSans.txt。
+
+
+MiSans Medium（MiSans-Medium.ttf，界面中文）
+--------------------------------------------
+字体提供方：小米 · 北京小米移动软件有限公司
+内嵌版权声明（字体 name 表原文）：
+    Copyright © 2020-2025 Beijing Xiaomi Mobile Software Co.,Ltd.
+    All Rights Reserved.
+许可：《MiSans 字体知识产权许可协议》
+    https://hyperos.mi.com/font/faq
+要点（依据官方 FAQ 与许可协议）：
+  - 全球范围内免费商用，可嵌入软件并随软件分发；
+  - 必须在软件中注明使用了 MiSans 字体
+    （本文件开头与「关于」页的注明即为履行该项义务）；
+  - 不得对字体进行改编、二次开发；
+  - 不得单独对外分发或售卖字体文件本身
+    （使用 MiSans 创作的作品不受此限，可正常分发）。
+
+
+Josefin Sans Bold（JosefinSans-Bold.ttf，界面数字）
+--------------------------------------------------
+版权声明（字体 name 表原文）：
+    Copyright 2010 The Josefin Sans Project Authors
+    (https://github.com/ThomasJockin/JosefinSansFont-master),
+    with Reserved Font Name "Josefin Sans".
+许可：SIL Open Font License 1.1（全文见 LICENSE-JosefinSans.txt）。
+要点：可嵌入随软件免费分发；不得单独售卖字体本身；衍生作品不得
+使用保留名 "Josefin Sans"。
+
+
+SEGA 圆ゴシック DB（SEGA_MaruGothicDB_traced.ttf，曲名显示）
+------------------------------------------------------------
+内嵌声明（字体 name 表原文）：
+    Traced from SDEZ170 SDF atlas (game data)
+该字体是从游戏（オンゲキ / SDEZ170）资源的 SDF 字形图集描出的轮廓，
+不是可再分发的字体软件，没有任何再分发许可。
+** 仅限作者自用。若要对外分发本应用，必须先移除或替换该字体。**

@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>オンゲキ 曲库</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   字体都做了子集化并内联，所以这个文件断网也能完整显示。
+   ══════════════════════════════════════════════════════════════ */
+@font-face { font-family:Official; src:url(data:font/woff2;base64,{{FONTS_OFFICIAL}}) format('woff2'); font-weight:700; font-display:block; }
+@font-face { font-family:MPLUS1p; font-weight:500; src:url(data:font/woff2;base64,{{FONTS_MPLUS1P_M}}) format('woff2'); font-display:block; }
+@font-face { font-family:MPLUS1p; font-weight:700; src:url(data:font/woff2;base64,{{FONTS_MPLUS1P_B}}) format('woff2'); font-display:block; }
+@font-face { font-family:MiSans; src:url(data:font/woff2;base64,{{FONTS_MISANS}}) format('woff2'); font-display:block; }
+@font-face { font-family:SEGA; src:url(data:font/woff2;base64,{{FONTS_SEGA}}) format('woff2'); font-display:block; }
+
+:root{
+  --canvas:#fff; --card:#ffffffcc; --control-surface:#fff; --card-active:#f5f5f5;
+  --magenta:#e84a92; --yellow:#faff00; --green:#32c63a;
+  --ink:#000; --ink-muted:#494949; --ink-faint:#6b6b6b;
+  --on-card:#111111; --on-card-muted:#333333;
+  --on-card-faint:#4a4a4a; --card-border:#d5d5d5;
+  --font-content:SEGA,"MPLUS1p","MiSans",system-ui,sans-serif;
+  --font-numeric:Official,"Josefin",system-ui,sans-serif;
+  --font-label:MPLUS1p,MiSans,system-ui,sans-serif;
+  --scale:1;
+  --character-ink:#171717; --character-muted:#666; --outline:#000;
+  --chip-border:#bbb; --mesh-opacity:.5; --mesh-filter:none;
+  --card-circuit-opacity:.05; --card-circuit-ink:#000; --scroll-thumb:rgba(0,0,0,.18);
+  --disabled-bg:#e5e5e5; --disabled-ink:#666;
+  color-scheme:light;
+}
+:root[data-theme=dark]{
+  --canvas:#000; --card:#222222cc; --control-surface:#222222dd; --card-active:#2e2e2eee;
+  --ink:#fff; --ink-muted:#bdbdbd; --ink-faint:#aaa;
+  --on-card:#fff; --on-card-muted:#bdbdbd; --on-card-faint:#aaa;
+  --card-border:#888;
+  --character-ink:#fff; --character-muted:#aaa; --outline:#888;
+  --chip-border:#888; --mesh-opacity:.08; --mesh-filter:invert(1);
+  --card-circuit-opacity:.16; --card-circuit-ink:#fff; --scroll-thumb:rgba(255,255,255,.28);
+  --disabled-bg:#3b3b3b; --disabled-ink:#aaa;
+  color-scheme:dark;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ margin:0; height:100%; background:var(--canvas); color:var(--ink);
+  font-family:var(--font-label); overflow:hidden; }
+button{ font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+input{ font:inherit; }
+
+/* ── 手机外壳 ── */
+#device{ position:absolute; inset:0; background:#e9e9ec; display:flex;
+  align-items:center; justify-content:center; }
+#stage{ position:relative; width:100%; height:100%; background:var(--canvas);
+  overflow:hidden; flex:0 0 auto; }
+@media (min-width:820px){
+  #device{ padding:26px; }
+  #stage{ width:402px; height:844px; border-radius:34px;
+    box-shadow:0 26px 70px rgba(0,0,0,.28),0 0 0 10px #1b1b1f,0 0 0 12px #34343a;
+    max-height:calc(100vh - 52px); }
+}
+@media (max-width:819px){ #stage{ width:100%; height:100%; } }
+
+/* ── 背景：mesh 纹理 + 三条斜带（位置与 App 一致：视口 .64H 处） ── */
+/* 页面背景在内容层下方；深浅卡片均允许同一背景透出。 */
+#backdrop{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0; }
+.screen .body{ background:transparent; }
+#backdrop .mesh{ position:absolute; inset:0;
+  background-image:url(data:image/webp;base64,{{MESH}}); opacity:var(--mesh-opacity); filter:var(--mesh-filter); }
+/* 官网卡片伪元素：电路属于表面，不铺到页面网格上；内容不参与透明度。 */
+:is(.card,.menu-card,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field)::before{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:-1;
+  background:var(--card-circuit-ink); opacity:var(--card-circuit-opacity);
+  mask-image:url(data:image/webp;base64,{{CIRCUIT}}); mask-mode:luminance;
+  mask-repeat:repeat; mask-position:left center; }
+/* canvas 覆盖旋转后的完整斜带范围；几何和深浅透明度均与 Flutter 一致。 */
+#bands{ position:absolute; left:0; top:64%; width:100%; height:36%; }
+#band-y1,#band-g,#band-y2{ display:none; }
+
+/* ── 页面容器 ── */
+.screen{ position:absolute; inset:0; z-index:1; display:flex; flex-direction:column;
+  transform:translateX(0); transition:transform .26s cubic-bezier(.2,.8,.25,1), opacity .26s; }
+.screen.out-left{ transform:translateX(-16%); opacity:0; pointer-events:none; }
+.screen.out-right{ transform:translateX(100%); }
+.screen.hidden{ display:none; }
+@keyframes slideIn{ from{ opacity:0; transform:translateX(7%); } }
+.screen.slide-in{ animation:slideIn .24s cubic-bezier(.2,.8,.25,1) both; }
+.screen .body{ flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain;
+  padding-bottom:96px; -webkit-overflow-scrolling:touch; }
+.screen .body.no-scroll{ overflow:hidden; }
+#homeBody{ padding-top:max(var(--safe-top), calc(var(--safe-bottom) + 43.5px)); }
+#s-menu > .body,#s-settings > .body,#s-about > .body,#s-search > .body,#s-license > .body{
+  min-height:0; padding-bottom:var(--safe-bottom); }
+/* 详情页没有底部控件（左下角不该出现菜单钮），不用再留 `.body` 那 96px 的
+   底栏避让位，否则滚到底会多出一截空带。与 App 侧去掉 clearance 同义。 */
+#s-detail > .body{ min-height:0; padding-bottom:calc(var(--safe-bottom) + 18px); }
+#s-menu > .body{ overflow:hidden; padding:0 16px var(--safe-bottom); }
+.menu-card{ display:flex; flex-direction:column; background:var(--card); padding:12px;
+  max-height:100%; clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.menu-card button{ flex:1 1 auto; min-height:0; padding:clamp(4px,2vh,16px) 8px; color:var(--on-card);
+  font-size:clamp(16px,calc(16px * var(--scale)),32px); line-height:1.25; overflow-wrap:anywhere; }
+.filter-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+.filter-actions .btn{ justify-content:center; padding:8px; min-width:0; }
+#s-license > .body{ background:transparent; padding:0 16px var(--safe-bottom); }
+#licenseText{ white-space:pre-wrap; overflow-wrap:anywhere; font:calc(13px * var(--scale))/1.6 var(--font-label); }
+#s-about .about-action{ margin-top:12px; color:var(--on-card); }
+#s-about .inforow .k{ flex-basis:5em; }
+#s-about .inforow .v{ font-size:calc(12px * var(--scale)); }
+
+/* ── 顶部栏（AppPage） ── */
+.topbar{ flex-shrink:0; padding:calc(var(--safe-top) + 13px) 70px 16px 14px; display:flex; align-items:center; gap:12px; }
+.iconbtn{ position:relative; width:48px; height:48px; background:var(--card); display:grid; place-items:center;
+  clip-path:polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  color:var(--on-card); flex:0 0 auto; }
+.iconbtn:active{ background:var(--card-active); }
+.iconbtn svg{ width:22px; height:22px; fill:currentColor; }
+.pagetitle{ font-size:calc(18px * var(--scale)); font-weight:700; line-height:1.25;
+  white-space:nowrap; overflow:hidden; text-overflow:clip; }
+
+/* ── 底部圆形控件 ── */
+.controls{ position:absolute; left:21px; right:21px; bottom:calc(var(--safe-bottom) + 22px);
+  display:flex; justify-content:space-between; z-index:6; pointer-events:none; }
+/* 圆钮底色必须跟主题走：浅色下写死深灰 + --on-card(#111) 图标 = 圆圈里什么都看不见。 */
+.circle{ width:43px; height:43px; border-radius:50%; background:var(--control-surface);
+  border:2px solid var(--green); display:grid; place-items:center; color:var(--on-card);
+  pointer-events:auto; transition:transform .12s, background .12s; }
+.circle:active{ transform:scale(.93); background:var(--card-active); }
+.circle svg{ width:20px; height:20px; fill:currentColor; }
+
+/* ── 列表卡片：80% 不透明白色 / 深灰基底，电路在卡片内，文字保持不透明。 ── */
+.list{ padding:0 15px; }
+.card{ position:relative; margin-bottom:12px; background:var(--card);
+  background-repeat:repeat; min-height:0; isolation:isolate;
+  clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,0 100%);
+  animation:cardin .32s cubic-bezier(.2,.8,.25,1) backwards; }
+.card > *{ z-index:1; }
+.chamfer-outline{ position:absolute !important; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:10 !important; overflow:visible; color:var(--card-border); }
+.chamfer-outline polygon{ fill:none; stroke:currentColor; stroke-width:1;
+  vector-effect:non-scaling-stroke; }
+@keyframes cardin{ from{ opacity:0; transform:translateY(8px); } }
+.card:active{ filter:brightness(1.12); }
+.card .row{ display:flex; gap:12px; padding:12px; align-items:flex-start; }
+.jacket{ flex:0 0 auto; border:3px solid #000; background:#353535; display:grid;
+  place-items:center; overflow:hidden; }
+.jacket img{ width:100%; height:100%; object-fit:cover; display:block; }
+.jacket .note{ width:44%; height:44%; fill:#8a8a8a; }
+.info{ flex:1 1 auto; min-width:0; padding-right:6px; }
+.genre{ font-size:calc(12px * var(--scale)); line-height:1.4; font-weight:700; }
+.newtag{ font-size:calc(9px * var(--scale)); color:var(--on-card); }
+.title{ font-family:var(--font-content); font-weight:700; line-height:1.35;
+  color:var(--on-card); padding:4px 0 6px; word-break:normal; overflow-wrap:anywhere; }
+.artist{ font-family:var(--font-content); font-weight:500; color:var(--on-card-muted);
+  word-break:normal; overflow-wrap:anywhere; }
+
+.levels{ display:flex; align-items:center; padding:8px 12px; min-height:52px;
+  gap:10px; background:transparent; border-top:1px solid var(--card-border); flex-wrap:nowrap; }
+.lvlabel{ flex:0 0 auto; font-family:var(--font-numeric); color:var(--on-card-muted);
+  font-size:calc(12px * var(--scale)); }
+.ringwrap{ flex:1 1 auto; min-width:0; display:grid; grid-template-columns:repeat(var(--ring-count, 4),minmax(0,1fr)); gap:6px; align-items:center; }
+.ring{ position:relative; display:grid; place-items:center; justify-self:center; aspect-ratio:1; min-width:0;
+  font-family:var(--font-numeric); font-weight:700; color:var(--on-card); }
+.ring svg{ position:absolute; inset:0; width:100%; height:100%; }
+.ring span{ position:relative; z-index:1; white-space:nowrap; font-size:clamp(10px,calc(15px * var(--scale)),18px); }
+
+.character{ margin-top:0; padding:7px 12px; background:transparent; border:3px solid var(--outline);
+  color:var(--character-ink); font-weight:700; font-size:calc(13px * var(--scale)); line-height:1.25;
+  margin-bottom:3px; }
+.character b{ color:var(--character-muted); font-weight:400; }
+
+/* ── 详情页 ── */
+.detailhead{ padding:calc(var(--safe-top) + 78px) 16px 0; }
+/* 详情页返回钮：与 App 的 Positioned(top:15,left:12) + Chamfer 一致。
+   padding 14 + 图标 20 = 48 方块，切角 7。 */
+.fabback{ position:absolute; top:calc(var(--safe-top) + 15px); left:12px; z-index:7;
+  width:48px; height:48px; background:var(--card); color:var(--on-card); display:grid; place-items:center;
+  clip-path:polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  transition:background .12s, transform .12s; }
+.fabback:active{ transform:scale(.94); background:var(--card-active); }
+.fabback svg{ width:20px; height:20px; fill:currentColor; }
+.headline{ display:flex; gap:12px; align-items:flex-start; min-width:0; }
+.headline > .cover{ flex:0 0 auto; }
+.headline > .headtext{ flex:1 1 auto; min-width:0; }
+.cover{ flex:0 0 auto; width:88px; height:88px; background:#353535; display:grid;
+  place-items:center; overflow:hidden; }
+.cover img{ width:100%; height:100%; object-fit:cover; }
+.headtext{ flex:1 1 auto; min-width:0; }
+.songtitle{ font-family:var(--font-content); font-size:calc(19px * var(--scale));
+  font-weight:700; line-height:1.25; overflow-wrap:anywhere; }
+.kana{ color:var(--ink-muted); font-family:var(--font-content);
+  font-size:calc(14px * var(--scale)); }
+.author{ color:var(--ink-faint); font-size:calc(14px * var(--scale));
+  overflow-wrap:anywhere; }
+/* 详情页元信息：标签在左、值在右的竖排列表（跟 DETAILS 同一种节奏）。
+   早先是 2×2 / 4 列网格，402dp 下值会被切半个词，索性改成一行一项。 */
+.meta{ margin:16px 16px 0; padding:6px 14px; background:var(--card);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.meta .cell{ display:flex; align-items:baseline; gap:10px; padding:7px 0; min-width:0; }
+.meta .cell + .cell{ border-top:1px solid rgba(255,255,255,.1); }
+/* 标签列宽度跟着字号走：固定 76px 在 2.0× 下放不下「最高难度」（22px × 4 字 = 88px），
+   折成「最高难 / 度」很难看。4.2em ≈ 四个汉字 + 一点余量。 */
+.meta .lab{ flex:0 0 auto; width:calc(11px * var(--scale) * 4.2); color:var(--on-card-muted);
+  font-size:calc(11px * var(--scale)); line-height:1.5; white-space:nowrap; }
+.meta .val{ flex:1 1 auto; min-width:0; font-size:calc(13px * var(--scale)); font-weight:700;
+  color:var(--on-card); overflow-wrap:anywhere; }
+.section{ padding:18px 16px 8px; }
+.section h2{ margin:0; color:var(--magenta); font-size:calc(17px * var(--scale));
+  font-weight:700; line-height:1.25; }
+.section p{ margin:0; font-size:calc(11px * var(--scale)); color:var(--ink-muted); }
+.chart{ margin:0 16px 8px; padding:12px; display:flex; gap:10px; background:var(--card);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.chart .bar{ flex:0 0 auto; width:5px; height:42px; }
+.chart .mid{ flex:1 1 auto; min-width:0; }
+.chart .name{ color:var(--on-card); font-weight:700; font-size:calc(14px * var(--scale)); }
+.chart .attrs{ color:var(--on-card-muted); font-size:calc(11px * var(--scale)); line-height:1.55; }
+.chart .designer{ min-height:1.55em; white-space:nowrap; overflow:hidden; text-overflow:clip; }
+.chart .counts{ display:flex; gap:12px; white-space:nowrap; }
+.chart .lv{ flex:0 0 auto; text-align:right; padding-left:8px; font-family:var(--font-numeric);
+  font-weight:700; font-size:calc(22px * var(--scale)); line-height:1.1; }
+.infolist{ margin:0 16px; padding:12px; background:var(--card);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.inforow{ display:flex; gap:8px; padding:6px 0; align-items:flex-start; }
+.inforow .k{ flex:0 0 88px; color:var(--on-card-muted); font-size:calc(11px * var(--scale)); line-height:1.7; }
+.inforow .v{ flex:1 1 auto; min-width:0; color:var(--on-card); font-size:calc(12px * var(--scale));
+  line-height:1.7; overflow-wrap:anywhere; }
+.linklist{ margin:0 16px; padding:0 12px; background:var(--card);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.linkrow{ min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  color:var(--on-card); text-decoration:none; font-size:calc(13px * var(--scale)); font-weight:700; }
+.linkrow + .linkrow{ border-top:1px solid rgba(255,255,255,.12); }
+.linkrow .arrow{ color:var(--magenta); font-size:18px; }
+
+/* 正文背景要压住斜带。App 的 scaffold 是白底、斜带只在 backdrop 层，
+   正文内容永远盖在上面；网页里斜带铺满视口，正文区不铺白底就会被黄绿条纹穿过
+   「角色」那一排 chip 的间隙，看着脏。详情页 / 搜索页 / 设置页 / 关于页统统铺白。 */
+#detailBody,#s-search > .body,#s-settings > .body,#s-about > .body{ background:transparent; }
+/* 页面底透明显示网格；电路仅在内容卡表面绘制。 */
+
+/* ── 搜索面板 ── */
+.searchwrap{ padding:0 14px; }
+.panel{ background:var(--card); padding:12px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.panel .caption{ color:var(--on-card); font-size:calc(13px * var(--scale)); }
+.searchbox{ display:flex; align-items:center; gap:8px; min-height:48px; margin-top:6px;
+  background:var(--card); border:1.5px solid #949494; padding:0 4px 0 12px; }
+.searchbox input{ flex:1 1 auto; min-width:0; background:none; border:0; outline:0;
+  color:var(--on-card); font-weight:700; font-size:max(14px, calc(12px * var(--scale))); padding:12px 0; }
+.searchbox input::placeholder{ color:var(--on-card-muted); font-weight:400; }
+.searchbox .clr{ width:40px; height:40px; display:grid; place-items:center; }
+.searchbox .clr svg{ width:18px; height:18px; fill:var(--on-card-muted); }
+/* 排序下拉同理：写死 #2a2a2a 底 + --on-card 文字，浅色下是深底深字。 */
+.select{ margin-top:12px; width:100%; min-height:48px; background:var(--control-surface);
+  color:var(--on-card); border:1px solid var(--card-border); padding:0 10px;
+  font-size:calc(13px * var(--scale)); }
+.btnrow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.btn{ min-height:40px; padding:0 14px; display:inline-flex; align-items:center;
+  font-size:calc(13px * var(--scale)); font-weight:700; }
+.btn.fill{ background:var(--magenta); color:var(--on-card); }
+.btn.fill:disabled{ background:#494949; color:rgba(255,255,255,.7); }
+.btn.out{ border:1.5px solid var(--magenta); color:var(--on-card); }
+.statuscard{ margin-top:12px; padding:12px; background:var(--card); }
+.statuscard div{ color:var(--on-card); font-size:calc(12px * var(--scale)); }
+.statuscard div + div{ color:var(--on-card-muted); margin-top:2px; }
+.chips{ display:flex; flex-wrap:wrap; gap:8px; padding:8px 16px 0; }
+/* 例：浅色主题下 chip 必须自带底色与文字色，不能靠继承 ——
+   Flutter 侧就是因为只继承到白色文字，整组筛选项在白底上看不见。 */
+.chip{ height:36px; padding:0 13px; border-radius:18px; border:1px solid var(--chip-border);
+  background:var(--control-surface); color:var(--on-card);
+  /* 选中态换色要和 App 的 _SortChip 同节拍（140ms）。之前这里没有 transition，
+     点下去是硬跳；两端一个是渐变一个是瞬变，装到手机上就会觉得「网页更干脆」。
+     只改时长，不碰颜色本身。 */
+  transition:background .14s cubic-bezier(.2,.8,.25,1),
+    border-color .14s cubic-bezier(.2,.8,.25,1),
+    color .14s cubic-bezier(.2,.8,.25,1);
+  }
+.alias-chip{ border-radius:0; clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%);
+  background:var(--canvas); color:var(--ink); font-size:calc(12px * var(--scale)); display:inline-flex;
+  align-items:center; }
+.chip[aria-pressed=true]{ background:var(--magenta); border-color:var(--magenta); color:var(--on-card); font-weight:700; }
+/* 难度排序的三个可叠加条件：常显，选了具体条件会自动切到「按难度排序」。 */
+/* 分组标题：跟列表一起滚，小竖条 + 名称 + 曲目数。 */
+.grouphead{ display:flex; align-items:center; gap:8px; padding:14px 16px 8px; }
+.grouphead i{ width:3px; height:14px; border-radius:2px; background:var(--magenta); flex:0 0 auto; }
+.grouphead span{ flex:1 1 auto; min-width:0; font-size:13px; font-weight:600;
+  color:var(--on-card); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.grouphead b{ flex:0 0 auto; font-size:12px; font-weight:400; color:var(--on-card-muted); }
+.diffsort{ padding-top:8px; }
+.diffsort-slots{ display:flex; flex-direction:column; gap:6px; }
+.group{ padding:6px 16px 0; }
+.group h3{ margin:20px 0 8px; font-size:calc(17px * var(--scale)); color:var(--magenta); font-weight:700; }
+
+/* 横向字母条 */
+/* 换排序方式时行条凭空出现，给一个 180ms 的淡入上滑，与 App 的 AnimatedSize
+   同节拍同曲线。App 那边连高度一起动（下面的难度/分类跟着滑），这里只做透明
+   度和位移 —— 纯 CSS 动 height 会把横向滚动一起裁掉。 */
+@keyframes rowin{ from{ opacity:0; transform:translateY(-4px); } }
+
+/* ── 设置页 ── */
+.settings{ padding:0 16px; }
+.field{ background:var(--card); padding:2px 12px 14px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%); }
+.field h3{ margin:20px 0 8px; font-size:calc(17px * var(--scale)); color:var(--magenta); font-weight:700; }
+.field .lead{ color:var(--on-card-muted); font-size:calc(13px * var(--scale)); margin:0 0 6px; }
+.radio{ display:flex; gap:12px; align-items:flex-start; padding:10px 0; }
+.radio .dot{ flex:0 0 auto; width:20px; height:20px; border-radius:50%;
+  border:2px solid #9a9a9a; margin-top:2px; position:relative; }
+.radio[aria-checked=true] .dot{ border-color:var(--magenta); }
+.radio[aria-checked=true] .dot::after{ content:''; position:absolute; inset:4px;
+  border-radius:50%; background:var(--magenta); }
+.radio .tt{ color:var(--on-card); font-weight:700; font-size:calc(14px * var(--scale)); line-height:1.35; }
+.radio .ds{ color:var(--on-card-muted); font-size:calc(12px * var(--scale)); line-height:1.5; }
+.field .foot{ margin-top:10px; color:var(--on-card-faint); font-size:calc(12px * var(--scale)); }
+.preview .song{ font-family:var(--font-content); font-size:calc(20px * var(--scale)); color:var(--on-card); }
+.preview .kana{ color:var(--on-card-muted); }
+.preview .nums{ display:flex; gap:10px 18px; margin-top:5px; flex-wrap:wrap; align-items:baseline; }
+.preview .nums .lab{ color:var(--on-card-muted); font-size:calc(13px * var(--scale)); }
+.preview .nums .val{ font-family:var(--font-numeric); color:var(--on-card); font-size:calc(17px * var(--scale)); }
+
+/* ── 桌面侧栏（窄屏隐藏）──
+   默认收起，只留一个 ⟡ 小钮。否则一进页面就被浮层压在左上角，不像正式软件。 */
+#devToggle{ position:fixed; right:18px; bottom:18px; z-index:21; width:38px; height:38px;
+  border-radius:50%; background:rgba(20,20,22,.78); color:#d8d8de; backdrop-filter:blur(6px);
+  display:grid; place-items:center; font-size:15px; line-height:1;
+  box-shadow:0 4px 16px rgba(0,0,0,.22); transition:background .15s, transform .12s; }
+#devToggle:hover{ background:rgba(20,20,22,.92); }
+#devToggle:active{ transform:scale(.94); }
+#toolbar{ position:fixed; right:18px; bottom:66px; z-index:20; display:flex; flex-direction:column;
+  gap:6px; padding:12px; background:rgba(20,20,22,.94); color:#eee; border-radius:12px;
+  font-size:12.5px; width:236px; backdrop-filter:blur(8px);
+  box-shadow:0 10px 30px rgba(0,0,0,.24); transform-origin:bottom right;
+  transition:opacity .16s, transform .16s; }
+#toolbar[data-open=false]{ opacity:0; transform:scale(.94) translateY(6px); pointer-events:none; }
+#toolbar h4{ margin:0 0 2px; font-size:12px; letter-spacing:.08em; color:#8f8f9a; font-weight:700; }
+#toolbar label{ display:flex; align-items:center; gap:8px; justify-content:space-between; }
+#toolbar select,#toolbar input[type=range]{ accent-color:var(--magenta); }
+#toolbar select{ background:#2b2b31; color:#eee; border:1px solid #3c3c44; border-radius:6px; padding:3px 6px; }
+#toolbar .hint{ color:#77777f; font-size:11.5px; line-height:1.5; }
+@media (max-width:819px){ #toolbar{ display:none; } #devToggle{ display:none; } }
+
+/* 滚动条克制一点 */
+.body::-webkit-scrollbar{ width:6px; }
+.body::-webkit-scrollbar-thumb{ background:var(--scroll-thumb); border-radius:3px; }
+.theme-switch{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 0; color:var(--on-card); font-size:calc(14px * var(--scale)); font-weight:700; }
+.theme-switch select{ width:auto; margin-top:0; }
+.theme-switch input{ appearance:none; flex:0 0 auto; width:44px; height:26px; margin:0;
+  border:2px solid #aaa; border-radius:15px; background:#494949; cursor:pointer; }
+.theme-switch input::before{ content:''; display:block; width:18px; height:18px;
+  margin:2px; border-radius:50%; background:#fff; }
+.theme-switch input:checked{ background:var(--magenta); border-color:var(--magenta); }
+.theme-switch input:checked::before{ transform:translateX(18px); }
+.theme-switch input:focus-visible{ outline:2px solid var(--on-card); outline-offset:3px; }
+/* 内容卡采用统一语义色；内描边不参与尺寸计算。 */
+.card,.menu-card,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field{
+  color:var(--on-card); position:relative; isolation:isolate;
+}
+:is(.card,.menu-card,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field){
+  position:relative; isolation:isolate;
+}
+.menu-card,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field{ position:relative; isolation:isolate; }
+.iconbtn,.fabback,.circle{ background:var(--control-surface); color:var(--on-card); isolation:isolate; }
+.searchbox{ background:var(--control-surface); }
+.btn.fill,.chip[aria-pressed=true]{ color:#fff; }
+:is(.iconbtn,.fabback,.circle):active{ background:var(--card-active); }
+:is(.iconbtn,.fabback,.circle) > svg:not(.chamfer-outline),.searchbox .clr svg{ fill:currentColor; }
+.searchbox .clr{ color:var(--on-card-muted); }
+:is(button,select,input,[role=radio]):focus-visible{ outline:2px solid var(--magenta); outline-offset:-3px; }
+:is(button,select):disabled{ cursor:default; color:var(--disabled-ink); }
+.btn.fill:disabled,.btn.out:disabled{ background:var(--disabled-bg); color:var(--disabled-ink); border-color:var(--card-border); }
+.btn:not(:disabled):active{ filter:brightness(.92); }
+.screen{ isolation:isolate; }
+.screen > .body{ position:relative; z-index:0; }
+.chamfer-outline{ z-index:2 !important; overflow:hidden; }
+.chamfer-outline,.chamfer-outline *{ pointer-events:none !important; }
+.iconbtn > .chamfer-outline,.fabback > .chamfer-outline{ width:100%; height:100%; }
+#toolbar[inert]{ visibility:hidden; }
+#s-menu .controls,#s-search .controls,#s-settings .controls,#s-about .controls,#s-license .controls{ display:none; }
+.select{ background:var(--control-surface); color:var(--on-card); border-color:var(--card-border); }
+.character{ border-color:var(--card-border); }
+/* 仅浅色普通文本：避免深色专用固定色或继承阴影穿透白卡。 */
+:root:not([data-theme=dark]) .artist{ color:var(--on-card-muted); font-weight:600; }
+:root:not([data-theme=dark]) .character{ color:var(--on-card); }
+:root:not([data-theme=dark]) .character b{ color:var(--on-card-faint); }
+:root:not([data-theme=dark]) .songtitle{ color:var(--on-card); }
+:root:not([data-theme=dark]) .headtext .kana{ color:var(--on-card-muted); }
+:root:not([data-theme=dark]) .headtext .author{ color:var(--on-card-faint); }
+:root:not([data-theme=dark]) :is(.card,.character,.headtext,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field),
+:root:not([data-theme=dark]) :is(.card,.character,.headtext,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field) *{ text-shadow:none; }
+/* 系统开了「移除动画」就把全页的动画与过渡压到几乎为 0。
+   以前只给单个元素关过，slide-in、cardin、圆钮按压缩放、chip 换色都还在动 ——
+   这正是「动了就不能只在显眼处关」的漏项。用 .01ms 而不是 none：保留 `both`
+   填充语义，元素仍会落到终态，不会卡在动画起始帧。 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+</style></head><body>
+
+<div id="device">
+  <div id="stage">
+    <div id="backdrop">
+      <div class="mesh"></div>
+      <canvas id="bands" width="1" height="1"></canvas>
+    </div>
+
+    <!-- 首页 -->
+    <section class="screen" id="s-home">
+      <div class="body" id="homeBody"><div class="list" id="homeList"></div></div>
+      <div class="controls">
+        <button class="circle" id="btnMenu" aria-label="菜单">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+        </button>
+        <button class="circle" id="btnSearch" aria-label="搜索与筛选">
+          <svg viewBox="0 0 24 24"><path d="M10 4a6 6 0 104.47 10.03l4.75 4.74 1.41-1.41-4.74-4.75A6 6 0 0010 4zm0 2a4 4 0 110 8 4 4 0 010-8z"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- 菜单：与原生一致，更新和删除曲库位于关于页 -->
+    <section class="screen hidden" id="s-menu">
+      <div class="topbar">
+        <button class="iconbtn" data-back aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+        </button>
+        <div class="pagetitle">菜单</div>
+      </div>
+      <div class="body no-scroll"><nav class="menu-card" aria-label="菜单">
+        <button id="menuSettings">设置</button>
+        <button id="menuAbout">关于</button>
+      </nav></div>
+    </section>
+
+    <!-- 搜索与筛选 -->
+    <section class="screen hidden" id="s-search">
+      <div class="topbar">
+        <button class="iconbtn" data-back aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+        </button>
+        <div class="pagetitle">搜索与筛选</div>
+      </div>
+      <div class="body">
+        <div class="searchwrap">
+          <div class="panel">
+            <div class="caption">关键词</div>
+            <div class="searchbox">
+              <input id="q" placeholder="曲名／读音／别名／ID" autocomplete="off">
+              <button class="clr" id="qClear" aria-label="清除">
+                <svg viewBox="0 0 24 24"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+              </button>
+            </div>
+            <div class="filter-actions">
+              <button class="btn out" id="clearFiltersBtn">清空全部筛选</button>
+              <button class="btn fill" id="applyFiltersBtn">应用并返回</button>
+            </div>
+            <!-- 三组设置对应 楽曲ソート排序方式汇总.xlsx 里的茶/绿/蓝三色：
+                 怎么分段 → 段内怎么排 → 对手榜显示哪项分数。 -->
+            <div class="diffsort" id="diffSortBar">
+              <div class="diffsort-slots">
+                <select class="select" id="tabGroupSel"></select>
+                <select class="select" id="tabSortSel"></select>
+                <select class="select" id="rivalSel"></select>
+              </div>
+            </div>
+            <div class="btnrow">
+              <button class="btn out" id="resetBtn">重置排序</button>
+            </div>
+          </div>
+          <div class="statuscard">
+            <div id="sortStatus">列表排序 · ジャンル › オススメ順</div>
+            <div id="countStatus">结果 0 首 · 筛选 0 项</div>
+          </div>
+        </div>
+        <div id="filterGroups"></div>
+        <div style="height:20px"></div>
+      </div>
+    </section>
+
+    <!-- 详情 -->
+    <section class="screen hidden" id="s-detail">
+      <div class="body" id="detailBody"></div>
+      <!-- 返回钮浮在内容之上（App 里是 Positioned(top:15,left:12)），
+           不放进 body 里，否则跟着一起滚下去就找不到了。 -->
+      <button class="fabback" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+      </button>
+    </section>
+
+    <!-- 设置 -->
+    <section class="screen hidden" id="s-settings">
+      <div class="topbar">
+        <button class="iconbtn" data-back aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+        </button>
+        <div class="pagetitle">设置</div>
+      </div>
+      <div class="body">
+        <div class="settings">
+          <div class="field" style="margin-bottom:16px">
+            <h3>外观</h3>
+            <label class="theme-switch" for="themeMode"><span>主题模式</span>
+              <select class="select" id="themeMode" aria-label="主题模式">
+                <option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option>
+              </select>
+            </label>
+            <p class="lead" id="themeStatus">更改立即生效并自动保存。深色可手动选择，不依赖系统设置。</p>
+          </div>
+          <div class="field">
+            <h3>字体方案</h3>
+            <p class="lead">切换后立即生效并自动保存。</p>
+            <div id="schemeList"></div>
+            <p class="foot">字体文件随安装包分发；切换字体方案不会改变曲库数据。</p>
+          </div>
+          <div class="field preview" style="margin-top:16px">
+            <h3>预览</h3>
+            <div class="song">We Are Us!</div>
+            <div class="kana">うぃーあーあす</div>
+            <div class="nums">
+              <span class="lab">定数</span><span class="val">13.7</span>
+              <span class="lab">物量</span><span class="val">1024</span>
+            </div>
+          </div>
+          <div style="height:20px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 关于 -->
+    <section class="screen hidden" id="s-about">
+      <div class="topbar">
+        <button class="iconbtn" data-back aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+        </button>
+        <div class="pagetitle">关于</div>
+      </div>
+      <div class="body"><div class="settings" id="aboutBody"></div><div style="height:20px"></div></div>
+    </section>
+
+    <section class="screen hidden" id="s-license">
+      <div class="topbar">
+        <button class="iconbtn" data-back aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
+        </button>
+        <div class="pagetitle">字体与第三方许可</div>
+      </div>
+      <div class="body"><p>本软件使用了 MiSans 字体。</p><pre id="licenseText">{{LICENSE_TEXT}}</pre></div>
+    </section>
+
+    <div id="toolbar" data-open="false" inert>
+      <h4>DEMO 控制台</h4>
+      <label>主题预览 <select id="previewThemeMode" aria-label="主题预览"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label>
+      <div class="hint">与设置页同步并保存；手机端请从菜单进入设置，直接选择深色。</div>
+      <label>系统字号 <input type="range" id="scaleRange" min="1" max="2" step="0.1" value="1"></label>
+      <label>字体方案
+        <select id="schemeSel">
+          <option value="official">官方混排</option>
+          <option value="classic">旧版圆体</option>
+          <option value="system">全部系统字</option>
+        </select>
+      </label>
+      <div class="hint" id="scaleHint">1.0×</div>
+      <div class="hint">左下圆钮开菜单 / 搜索<br>卡片可点开详情，返回键退回<br>右下 ⟡ 可调字号与字体方案</div>
+    </div>
+    <button id="devToggle" aria-label="演示控制台">⟡</button>
+  </div>
+</div>
+
+<script>
+const SONGS = {{PAYLOAD}};
+const ART = {{ART}};
+const $ = (id) => document.getElementById(id);
+
+/* ── 常量（与 lib/src 对齐） ── */
+const GENRE_COLORS = { '01':'#ff0066','02':'#ffd822','03':'#cf3eff','04':'#00c312','05':'#42b6ff','06':'#ff7dab' };
+const GENRE_IDS = {{GENRE_IDS}};
+const GENRE_FALLBACK = '#e84a92';
+const TONES = ['#16ff47','#ffba00','#fa0667','#a810ff','#f8ff2f'];
+const DIFF_NAMES = ['BASIC','ADVANCED','EXPERT','MASTER','LUNATIC'];
+const DIFF_KEYS = ['b','a','e','m','l'];
+
+const state = {
+  scale: 1, scheme: 'official',
+  q: '',
+  // 「按难度排序」下可同时叠加的三个条件，数组顺序即比较优先级。
+  tabGroup: 'genre', tabSort: 'recommended', rival: 'technical',
+  genres: new Set(), chars: new Set(), releases: new Set(),
+  diffs: new Set(), levels: new Set(),
+  stack: ['home'],
+};
+
+/* ── 三态外观：手动选择优先；仅跟随系统时响应媒体变化。 ── */
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+const THEME_MODE_KEY = 'songquery.themeMode';
+function readThemeMode(){
+  try {
+    const saved = localStorage.getItem(THEME_MODE_KEY);
+    if (['light','dark','system'].includes(saved)) return saved;
+    return localStorage.getItem('songquery.followSystemDark') === 'false' ? 'light' : 'system';
+  } catch (_) { return 'system'; }
+}
+let themeMode = readThemeMode();
+function applyTheme(){
+  const dark = themeMode === 'dark' || (themeMode === 'system' && systemDark.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#ffffff';
+  $('themeMode').value = $('previewThemeMode').value = themeMode;
+  $('themeStatus').textContent = (themeMode === 'system' ? '跟随系统，当前为' + (dark ? '深色' : '浅色') : '已手动选择' + (dark ? '深色' : '浅色')) + '。更改立即生效并自动保存。';
+  drawBands();
+}
+function setThemeMode(value){
+  if (!['light','dark','system'].includes(value)) return;
+  themeMode = value;
+  try { localStorage.setItem(THEME_MODE_KEY, value); } catch (_) {}
+  applyTheme();
+}
+$('themeMode').onchange = $('previewThemeMode').onchange = e => setThemeMode(e.target.value);
+systemDark.addEventListener('change', applyTheme);
+window.addEventListener('storage', e => {
+  if (e.key === THEME_MODE_KEY || e.key === null){ themeMode = readThemeMode(); applyTheme(); }
+});
+applyTheme();
+
+/* ── 字体方案 ── */
+const SCHEMES = {
+  official: { content:'SEGA,"MPLUS1p","MiSans"', numeric:'Official', label:'MPLUS1p,MiSans' },
+  classic:  { content:'"MPLUS1p","MiSans"',   numeric:'Official', label:'MPLUS1p,MiSans' },
+  system:   { content:'system-ui,sans-serif', numeric:'system-ui,sans-serif', label:'system-ui,sans-serif' },
+};
+function applyScheme(name){
+  state.scheme = name;
+  const s = SCHEMES[name] || SCHEMES.official;
+  document.documentElement.style.setProperty('--font-content', s.content);
+  document.documentElement.style.setProperty('--font-numeric', s.numeric);
+  document.documentElement.style.setProperty('--font-label', s.label);
+}
+function applyScale(v){
+  state.scale = v;
+  document.documentElement.style.setProperty('--scale', v);
+  document.getElementById('scaleRange').value = v;
+  document.getElementById('scaleHint').textContent = v.toFixed(1) + '×';
+  renderHome(); if (state.stack.includes('detail')) openDetail(state.currentDetail, true);
+}
+
+/* ── 词不拆：与 theme.dart 的 widestUnitScale 同一套规则 ──
+   中日文/空白/半角片假名/全角符号处可断，其余（含全角英数）连成一段。
+   段宽超过可用宽度时按比例缩字号，下限 .72（作者 .62），一个字都不删。 */
+const BREAKABLE = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff61-\uff9f\uffe0-\uffee\s]/;
+/* 取「不可断片段」。注意不能写成 text.split(BREAKABLE)：split 会把分隔符一起丢掉，
+   `ＧＯ！ＧＯ！ラブリズム♥` 切完只剩 `ＧＯ！ＧＯ！` 与 `♥`，中间那串片假名整段消失，
+   于是量宽永远认为「放得下」，字号一点不缩，渲染时才折行/溢出。
+   这里逐字符扫：遇到断点字符就自己单独成段（它本身就是一个摆放单元），
+   连续的不断点字符（拉丁词）连成一段 —— 与 Flutter 侧「按最宽单元判是否超宽」等价。 */
+function words(text){
+  const s = text || '';
+  const out = [];
+  let buf = '';
+  for (const ch of s){
+    if (BREAKABLE.test(ch)){
+      if (buf){ out.push(buf); buf = ''; }
+      if (!/\s/.test(ch)) out.push(ch);      // 空白不断成可见单元
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+/* 量宽：先等随页面内联的字体就绪，否则 canvas 用 fallback 字体量出来偏窄，
+   换行后才露馅（唯一一次失败就是「标题看着没变小、右边被切」）。
+   字体就绪后重画当前页一次即可。
+   canvas 的 font 是 shorthand，不吃 var()；--font-content 在 official 下是
+   SEGA,"MPLUS1p","MiSans"，而 canvas 会取第一个拿得到的族（SEGA），
+   与 CSS 侧「找不到的字逐字回退」语义不同 —— 所以这里只取第一个已注册族，够用。 */
+const measureCtx = document.createElement('canvas').getContext('2d');
+const fontStackCache = new Map();
+function fontStack(raw){
+  const key = raw || '';
+  if (fontStackCache.has(key)) return fontStackCache.get(key);
+  const families = key.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+  // 只认真正 @font-face 注册过的族名。system-ui / sans-serif 这类泛族在 check() 里恒为 true，
+  // 会被误当首选；字体没加载完时它们量出来的宽度也不是真值。
+  const registered = new Set([...document.fonts].map(f => f.family.replace(/^["']|["']$/g, '')));
+  const usable = families.filter(f => registered.has(f));
+  const fallback = families.find(f => !registered.has(f)) || 'sans-serif';
+  const picked = usable.length ? usable[0] : fallback;
+  fontStackCache.set(key, picked);
+  return picked;
+}
+function textWidth(text, px, font){
+  measureCtx.font = '700 ' + px + 'px ' + JSON.stringify(fontStack(font));
+  return measureCtx.measureText(text).width;
+}
+/* 能不能整行放下：canvas 粗量只当预估值，真正定字号在 fitNode() 里用真实排版量。 */
+function fitFont(text, basePx, availPx, font, minScale){
+  let widest = 0;
+  for (const w of words(text)) widest = Math.max(widest, textWidth(w, basePx, font));
+  if (widest <= availPx || widest === 0) return basePx;
+  const ratio = availPx / widest;
+  return ratio >= minScale ? basePx * ratio * 0.99 : basePx * minScale;
+}
+
+/* ── 工具 ── */
+function el(tag, cls, html){ const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+const chamferTargets = '.card,.menu-card,.meta,.chart,.infolist,.linklist,.panel,.statuscard,.field,.iconbtn,.fabback,.alias-chip';
+function chamferPixels(node){
+  const clip = getComputedStyle(node).clipPath;
+  const values = [...clip.matchAll(/calc\(100%\s*-\s*(\d+(?:\.\d+)?)px\)|100%\s+(\d+(?:\.\d+)?)px/g)];
+  const match = values.find(m => m[1] || m[2]);
+  return match ? Number(match[1] || match[2]) : 0;
+}
+function outline(node){
+  if (!node || node.querySelector(':scope > .chamfer-outline')) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('class','chamfer-outline');
+  svg.setAttribute('aria-hidden','true');
+  svg.setAttribute('focusable','false');
+  svg.setAttribute('preserveAspectRatio','none');
+  const polygon = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  svg.appendChild(polygon); node.appendChild(svg);
+  const resize = () => {
+    const w = Math.max(1, node.clientWidth || node.offsetWidth);
+    const h = Math.max(1, node.clientHeight || node.offsetHeight);
+    const cut = chamferPixels(node);
+    const inset = 0.5;
+    const diagonalInset = Math.SQRT2 * inset;
+    const topX = Math.max(inset, w - cut - diagonalInset + inset);
+    const rightY = Math.min(h - inset, cut + diagonalInset - inset);
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    polygon.setAttribute('points', `${inset},${inset} ${topX},${inset} ${w-inset},${rightY} ${w-inset},${h-inset} ${inset},${h-inset}`);
+  };
+  node._chamferResize = resize;
+  new ResizeObserver(resize).observe(node);
+  resize();
+}
+function installOutlines(root=document){
+  if (root.nodeType === 1 && root.matches(chamferTargets)) outline(root);
+  root.querySelectorAll(chamferTargets).forEach(outline);
+}
+const outlineObserver = new MutationObserver(records => {
+  for (const record of records) for (const added of record.addedNodes)
+    if (added.nodeType === 1) installOutlines(added);
+});
+outlineObserver.observe(document.body,{childList:true,subtree:true});
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function jacket(art, size, cls){
+  const box = el('div', 'jacket ' + (cls||''));
+  box.style.width = size + 'px'; box.style.height = size + 'px';
+  if (ART[art]) box.innerHTML = '<img loading="lazy" alt="" src="data:image/png;base64,' + ART[art] + '">';
+  else box.innerHTML = '<svg class="note" viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3z"/></svg>';
+  return box;
+}
+function ring(chart, scale){
+  const d = chart.d || 0;
+  const size = scale > 1.2 ? 50 : 36;
+  const node = el('div', 'ring');
+  // 网格列保持等分，但圆圈本身使用紧凑固定尺寸，避免卡片难度图标撑得过大。
+  const ringSize = scale > 1.2 ? 42 : 34;
+  node.style.width = ringSize + 'px'; node.style.height = ringSize + 'px';
+  const color = TONES[Math.min(d, 4)];
+  node.innerHTML =
+    '<svg viewBox="0 0 40 34" preserveAspectRatio="none">' +
+      '<ellipse cx="20" cy="17" rx="18.5" ry="15.5" fill="none" stroke="#787878" stroke-width="2"/>' +
+      '<path d="M20 1.5 A18.5 15.5 0 0 1 38.5 17" fill="none" stroke="' + color + '" stroke-width="2"/>' +
+    '</svg><span>' + esc(chart.l) + '</span>';
+  return node;
+}
+
+/* ── 排序 / 过滤 ── */
+/* 三组设置（对应 楽曲ソート排序方式汇总.xlsx 的茶 / 绿 / 蓝三色）。
+   on:false = 当前曲库快照里没有这份数据：照表格列出来，但灰掉不可选。
+   选项文字一律用游戏原文，不翻译 —— 这三个下拉在还原游戏里的ソート設定。
+   默认项不加「（標準）」：那是表格里标默认的注记，靠排在第一位体现。 */
+const TAB_GROUPS = [
+  { k:'genre',     label:'ジャンル',         on:true },
+  { k:'all',       label:'全曲',             on:true },
+  { k:'character', label:'キャラクター',     on:true },
+  { k:'release',   label:'バージョン',       on:true },
+  { k:'level',     label:'譜面レベル',       on:true },
+  { k:'title',     label:'曲名',             on:true },
+  { k:'attribute', label:'属性',             on:false },
+];
+const TAB_SORTS = [
+  { k:'recommended',    label:'オススメ順',           on:true },
+  { k:'battleScore',    label:'バトルスコア順',       on:false },
+  { k:'technicalScore', label:'テクニカルスコア順',   on:false },
+  { k:'platinumScore',  label:'プラチナスコア順',     on:false },
+  { k:'enemyLevel',     label:'対戦相手のレベル順',   on:true },
+  { k:'title',          label:'曲名順',               on:true },
+  { k:'dateAdded',      label:'追加日順',             on:true },
+  { k:'chapter',        label:'チャプター順',         on:true },
+];
+const RIVAL_SCORES = [
+  { k:'technical', label:'テクニカルスコア', on:false },
+  { k:'battle',    label:'バトルスコア',     on:false },
+  { k:'platinum',  label:'プラチナスコア',   on:false },
+];
+const GENRE_ORDER = ['POPS＆ANIME','niconico','東方Project','VARIETY','チュウマイ','オンゲキ'];
+const RELEASE_ORDER = ['ONGEKI','ONGEKI Plus','SUMMER','SUMMER Plus','RED','RED Plus',
+  'Re:Fresh','Re:Fresh Act.2','bright','bright MEMORY Act.1','bright MEMORY Act.2',
+  'bright MEMORY Act.3'];
+const KANA_ROWS = {
+  'あ行':'あいうえおぁぃぅぇぉアイウエオァィゥェォヴ',
+  'か行':'かきくけこがぎぐげごカキクケコガギグゲゴ',
+  'さ行':'さしすせそざじずぜぞサシスセソザジズゼゾ',
+  'た行':'たちつてとだぢづでどっタチツテトダヂヅデドッ',
+  'な行':'なにぬねのナニヌネノ',
+  'は行':'はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ',
+  'ま行':'まみむめもマミムメモ',
+  'や行':'やゆよゃゅょヤユヨャュョ',
+  'ら行':'らりるれろラリルレロ',
+  'わ行':'わをんゎワヲンヮ',
+};
+const KANA_ROW_KEYS = Object.keys(KANA_ROWS);
+const KANA_LATIN = ['A~G','H~N','O~U','V~Z'];
+
+/* 五十音行判定与 App 的 kanaRow/kanaRank 逐字对齐，否则两端组头会对不上。 */
+function kanaRowOf(value){
+  if (!value) return 'その他';
+  const head = value[0];
+  for (const row of KANA_ROW_KEYS) if (KANA_ROWS[row].includes(head)) return row;
+  const u = head.toUpperCase();
+  if (/^[A-G]$/.test(u)) return 'A~G';
+  if (/^[H-N]$/.test(u)) return 'H~N';
+  if (/^[O-U]$/.test(u)) return 'O~U';
+  if (/^[V-Z]$/.test(u)) return 'V~Z';
+  return 'その他';
+}
+function kanaRankOf(row){
+  const i = KANA_ROW_KEYS.indexOf(row);
+  if (i >= 0) return i;
+  const j = KANA_LATIN.indexOf(row);
+  return j >= 0 ? KANA_ROW_KEYS.length + j : 999;
+}
+const rankOf = s => s.ch.length ? Math.max(...s.ch.map(c => c.d || 0)) : -1;
+const topLevelOf = s => s.ch.length
+  ? Math.max(...s.ch.map(c => (typeof c.v === 'number' ? c.v : 0)))
+  : -1;
+
+/* 状态里可能是空串（下拉还没填充时的非法值），统一回退到默认项，
+   否则整张列表会变成「无组头 + 不排序」的怪状态。 */
+function currentTabGroup(){
+  const hit = TAB_GROUPS.find(g => g.k === state.tabGroup && g.on);
+  return hit ? hit.k : 'genre';
+}
+function currentTabSort(){
+  const hit = TAB_SORTS.find(x => x.k === state.tabSort && x.on);
+  return hit ? hit.k : 'recommended';
+}
+
+function groupLabelOf(s){
+  if (state.q.trim()) return '';            // 搜索态按相关度，不分段
+  switch (currentTabGroup()){
+    case 'genre':     return s.g || '其他';
+    case 'all':       return '';
+    case 'character': return s.p || '未知';
+    case 'release':   return s.r || '未知';
+    case 'level':     return topLevelOf(s) > 0 ? String(Math.floor(topLevelOf(s))) : '—';
+    case 'title':     return kanaRowOf(s.k || s.t);
+    default:          return '';
+  }
+}
+function groupRankOf(s){
+  switch (currentTabGroup()){
+    case 'genre': {
+      const i = GENRE_ORDER.indexOf(s.g);
+      return i < 0 ? GENRE_ORDER.length : i;
+    }
+    case 'all':       return 0;
+    case 'character': return parseInt(s.ci, 10) || 999999;
+    case 'release': {
+      const i = RELEASE_ORDER.indexOf(s.r);
+      return i < 0 ? RELEASE_ORDER.length : i;
+    }
+    case 'level':     return -Math.round(topLevelOf(s) * 10);   // 高等级在前
+    case 'title':     return kanaRankOf(kanaRowOf(s.k || s.t));
+    default:          return 0;
+  }
+}
+function levelKey(l){ return String(l || ''); }
+
+function filtered(){
+  const q = state.q.trim().toLowerCase();
+  let list = SONGS.slice();
+  if (q){
+    // 相关度：曲名完全相等 > 曲名包含 > 读音包含 > 作者包含 > ID
+    const scored = [];
+    for (const s of list){
+      const t = s.t.toLowerCase(), k = (s.k||'').toLowerCase(), a = (s.a||'').toLowerCase();
+      let score = 0;
+      if (t === q) score = 100;
+      else if (t.startsWith(q)) score = 80;
+      else if (t.includes(q)) score = 60;
+      else if (k.includes(q)) score = 40;
+      else if (a.includes(q)) score = 20;
+      else if ((s.al||[]).some(x => x.toLowerCase().includes(q))) score = 15;
+      else if (s.i.includes(q)) score = 10;
+      if (score) scored.push([score, s]);
+    }
+    scored.sort((x, y) => y[0] - x[0]);
+    list = scored.map(x => x[1]);
+  }
+  const pick = (set, get) => set.size ? list.filter(s => set.has(get(s))) : list;
+  list = pick(state.genres, s => s.g);
+  list = pick(state.chars, s => s.p);
+  list = pick(state.releases, s => s.r);
+  if (state.diffs.size || state.levels.size){
+    list = list.filter(s => s.ch.some(c =>
+      (state.diffs.size === 0 || state.diffs.has(c.d)) &&
+      (state.levels.size === 0 || state.levels.has(levelKey(c.l)))));
+  }
+  if (!q){
+    // 三组设置的前两组在这里生效：先按分组键聚段，段内再排。
+    // 比较器与 App 的 SongEngine.listGrouped 逐项对齐（同分一律走曲名兜底）。
+    // 曲名相等时还要按 id 升序收尾 —— 这一步不能省：曲库里有同一首歌的多个
+    // 版本（DIE IN 400643 / 910131 读音都是 DIEIN、夢花火与ユメハナビ都读
+    // ユメハナヒ），前键相等时 App 用 `a.id.compareTo(b.id)` 定序；网页若返回 0
+    // 就退化成「保持 payload 原序」，两端当场分道扬镳。全量对拍里 30 个组合
+    // 有 17 个栽在这一处。
+    const idAsc = (x, y) => (x.i < y.i ? -1 : x.i > y.i ? 1 : 0);
+    const byTitle = (x, y) =>
+      String(x.k || x.t).localeCompare(String(y.k || y.t), 'ja') || idAsc(x, y);
+    const within = (x, y) => {
+      switch (currentTabSort()){
+        case 'enemyLevel':
+          return ((y.el ?? -1) - (x.el ?? -1)) || byTitle(x, y);
+        case 'title':
+          return byTitle(x, y);
+        case 'dateAdded':
+          return String(y.dd || '').localeCompare(String(x.dd || '')) || byTitle(x, y);
+        case 'chapter':
+          return String(x.cid || '').localeCompare(String(y.cid || '')) || byTitle(x, y);
+        default:   // recommended：档位降序 → 谱面等级降序 → 曲名
+          return (rankOf(y) - rankOf(x)) || (topLevelOf(y) - topLevelOf(x)) ||
+            byTitle(x, y);
+      }
+    };
+    const labels = new Map(), groupRanks = new Map();
+    for (const song of list){
+      const label = groupLabelOf(song);
+      labels.set(song.i, label);
+      if (!groupRanks.has(label)) groupRanks.set(label, groupRankOf(song));
+    }
+    list.sort((x, y) => {
+      const lx = labels.get(x.i), ly = labels.get(y.i);
+      if (lx !== ly){
+        const rx = groupRanks.get(lx), ry = groupRanks.get(ly);
+        if (rx !== ry) return rx - ry;
+        return lx < ly ? -1 : lx > ly ? 1 : 0;
+      }
+      return within(x, y);
+    });
+  }
+  return list;
+}
+function rowOf(song){
+  const kana = song.k || song.t;
+  const c = kana.charCodeAt(0);
+  if (c >= 0x3041 && c <= 0x309f) return 'あ行';
+  return '';
+}
+
+/* ── 首页列表 ── */
+function cardFor(song){
+  const scale = state.scale;
+  const card = el('div', 'card');
+  // 用真实布局宽度，别 clamp 到 430 —— 桌面上 stage 固定 402，clamp 反而会高估 28px，
+  // 算出来的可用字宽偏大，2.0× 字号时标题就被切在右边。
+  const screenW = 402;                           // 设计宽固定 402dp（手机端满屏只放大，不改布局宽）
+  const narrow = true;                            // 402dp 上封面恒为 88，与 app.dart 一致
+  // 与 app.dart 同一套阈值：宽度 <350dp 且字号 ≥1.8 才缩到 64，否则 88。
+  // 原来多一档「76」，可 402dp 上封面实际还是 88，算字宽时按 76 算就少扣了 12px。
+  const jacketSize = narrow && scale >= 1.8 ? 64 : 88;
+  const rowGap = narrow ? 10 : 12;
+  const row = el('div', 'row');
+  row.style.gap = rowGap + 'px';                 // 和 CSS 的 gap 对齐，宽度才算得准
+  row.appendChild(jacket(song.art, jacketSize));
+
+  const info = el('div', 'info');
+  const genre = el('div', 'genre', esc(song.g));
+  genre.style.color = GENRE_COLORS[GENRE_IDS[song.g]] || GENRE_FALLBACK;
+  info.appendChild(genre);
+  if (song.n) info.appendChild(el('div', 'newtag', 'NEW'));
+
+  const titlePx = (narrow ? 17 : 18) * scale;
+  const title = el('div', 'title', esc(song.t));
+  title.style.fontSize = titlePx.toFixed(2) + 'px';
+  title.style.margin = '4px 0 6px';
+  info.appendChild(title);
+
+  const artistBase = (song.a.length > 55 ? 11.5 : 13) * scale;
+  const artist = el('div', 'artist', 'ARTIST: ' + esc(song.a));
+  artist.style.fontSize = artistBase.toFixed(2) + 'px';
+  artist.style.lineHeight = song.a.length > 55 ? '1.35' : '1.5';
+  info.appendChild(artist);
+
+  // 字号先用 base 挂上，等节点进 DOM 后再按真实渲染宽度校准。
+  // canvas 量宽和 CSS 实际排版（字距、合成、缩放）永远有偏差，只有真实渲染量出来的才是真值。
+  title.dataset.basePx = titlePx;
+  artist.dataset.basePx = artistBase;
+  pendingFits.push({ title, artist, titlePx, artistBase, minT: 0.72, minA: 0.62 });
+
+  row.appendChild(info);
+  card.appendChild(row);
+
+  const levels = el('div', 'levels');
+  const lvLabel = el('div', 'lvlabel', 'LEVEL');
+  const labelW = scale > 1.2 ? Math.max(76, 46 * scale) : (narrow ? 46 : 54);
+  lvLabel.style.width = labelW + 'px';
+  levels.appendChild(lvLabel);
+  const wrap = el('div', 'ringwrap');
+  wrap.style.maxWidth = 'calc(100% - ' + (labelW + 10) + 'px)';
+  wrap.style.setProperty('--ring-count', Math.max(1, Math.min(song.ch.length, 5)));
+  for (const chart of song.ch) wrap.appendChild(ring(chart, scale));
+  levels.appendChild(wrap);
+  card.appendChild(levels);
+
+  if (song.p){
+    const ch = el('div', 'character');
+    ch.innerHTML = '<b>Character : </b>' + esc(song.p);
+    card.appendChild(ch);
+  }
+  return card;
+}
+
+function renderHome(){
+  const list = filtered();
+  const host = $('homeList');
+  host.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  // 组头跟着列表滚，不吸顶。数量按整段算（不是首屏这 60 首）。
+  const totals = new Map();
+  for (const song of list){
+    const g = groupLabelOf(song);
+    if (g) totals.set(g, (totals.get(g) || 0) + 1);
+  }
+  let lastGroup = null;
+  // 以前直接取前 60 首，首屏常常整段落在一个分类里，看不出「分段」。
+  // 改成每组取前 20 首（总数上限 120）：一屏内能出现两三个组头，
+  // DOM 量仍然可控（App 端是全量虚拟列表，这里只是网页预览）。
+  const PER_GROUP = 20;
+  const seen = new Map();
+  const shown = [];
+  for (const song of list){
+    const g = groupLabelOf(song);
+    if (g){
+      const n = (seen.get(g) || 0) + 1;
+      seen.set(g, n);
+      if (n > PER_GROUP) continue;
+    }
+    shown.push(song);
+    if (shown.length >= 120) break;
+  }
+  shown.forEach((song, i) => {
+    const group = groupLabelOf(song);
+    if (group && group !== lastGroup){
+      const head = el('div', 'grouphead');
+      head.innerHTML = '<i></i><span>' + esc(group) + '</span><b>' +
+        (totals.get(group) || 0) + '</b>';
+      frag.appendChild(head);
+      lastGroup = group;
+    }
+    const node = cardFor(song);
+    node.style.animationDelay = Math.min(i, 8) * 12 + 'ms';
+    node.addEventListener('click', () => openDetail(song));
+    frag.appendChild(node);
+  });
+  if (!list.length) frag.appendChild(el('div', 'statuscard', '<div>没有匹配的曲目</div><div>换个关键词，或到「搜索与筛选」里放宽条件。</div>'));
+  host.appendChild(frag);
+  flushFits();
+  refitOverflow();
+}
+
+/* 进 DOM 后按真实排版量宽再定字号：把文本塞进同字体的临时 span 量一遍，
+   px 按 可用宽 / 实际宽 等比缩，下限 minScale。不删字、不加省略号。
+   必须用 var 而不是 let —— 首屏 renderHome() 跑在这段声明之前，
+   写成 let 会命中 TDZ 抛 ReferenceError，脚本从那一行起整段不执行
+   （2.0× 下标题不缩、作者行不缩、后续绑定全失效，全是这一个原因）。 */
+var pendingFits = [];
+function flushFits(){
+  const jobs = pendingFits;
+  pendingFits = [];
+  if (!jobs.length) return;
+  const range = document.createRange();
+  for (const j of jobs){
+    fitNode(j.title, j.titlePx, j.minT, range);
+    fitNode(j.artist, j.artistBase, j.minA, range);
+  }
+}
+/* 兜底：只处理「真的画到卡片外面」的那种溢出。
+   判据不能用 scrollWidth —— 折行时 scrollWidth == clientWidth，测量上看不出问题；
+   要看每一行 Range.getClientRects() 最右缘有没有越过节点右边界。
+   （早先拿整串 nowrap 宽度当基准，会把正常折行的作者行再压小一档。） */
+function refitOverflow(){
+  document.querySelectorAll('#homeList .title, #homeList .artist').forEach(node => {
+    if (!node.isConnected) return;
+    const base = parseFloat(node.dataset.basePx);
+    const cur = parseFloat(node.style.fontSize);
+    if (!base || !cur) return;
+    const box = node.getBoundingClientRect();
+    if (!box.width) return;
+    const rg = document.createRange();
+    rg.selectNodeContents(node);
+    const rects = [...rg.getClientRects()];
+    if (!rects.length) return;
+    const maxRight = Math.max(...rects.map(r => r.right));
+    const over = maxRight - box.right;
+    if (over <= 1) return;                       // 1px 容差：字宽取整
+    const minScale = node.classList.contains('title') ? 0.72 : 0.62;
+    const px = Math.max(base * minScale, cur * box.width / (box.width + over) * 0.995);
+    if (px < cur) node.style.fontSize = px.toFixed(2) + 'px';
+  });
+}
+/* 与 theme.dart 的 widestUnitScale 同一套判定：只看「不可断单元」里最宽的那个。
+   整串放不下不算问题 —— 文字本来就该折行；只有某个单元自身比可用宽还宽，
+   才会在词中间被劈开，那才是要缩字号的情形。
+   早先这里拿整串 nowrap 宽度算比例，结果 1.0× 下「ARTIST: 真宮寺さくら（…サクラ大戦」被
+   缩到 8.22px（下限 8.06）才停 —— 字小到看不清，只为把那串硬塞进一行，跟 App 行为不符。 */
+function fitNode(node, basePx, minScale){
+  if (!node || !node.isConnected) return;
+  const avail = node.clientWidth;
+  if (!avail) return;
+  // 关键：量宽时必须显式带上字号。node 上的 fontSize 已经是「上一轮量完的结果」，
+  // 直接拿 getComputedStyle(node).font 去量等于拿缩过的字号再量一轮，基准越缩越小。
+  const cs = getComputedStyle(node);
+  const probe = document.createElement('span');
+  probe.style.cssText = 'display:inline-block;white-space:nowrap;width:max-content;position:absolute;visibility:hidden;left:-9999px;';
+  probe.style.fontFamily = cs.fontFamily;
+  probe.style.fontWeight = cs.fontWeight;
+  probe.style.letterSpacing = cs.letterSpacing;
+  probe.style.fontSize = basePx + 'px';
+
+  let widest = 0;
+  const units = words(node.textContent);
+  if (!units.length) return;
+  document.body.appendChild(probe);
+  for (const u of units){
+    probe.textContent = u;
+    widest = Math.max(widest, probe.offsetWidth);
+  }
+  probe.remove();
+  if (!widest || widest <= avail) return;
+  // .99 是留给字宽取整的余量：刚好等于行宽的话，一个像素的进位就又会断开。
+  const ratio = avail / widest;
+  const px = ratio >= minScale ? basePx * ratio * 0.99 : basePx * minScale;
+  node.style.fontSize = px.toFixed(2) + 'px';
+}
+
+/* ── 详情页 ── */
+function openDetail(song, silent){
+  state.currentDetail = song;
+  if (!silent){ state.stack.push('detail'); show('detail'); }
+  const scale = state.scale;
+  const wide = Math.min(document.getElementById('stage').clientWidth || 320, 430);
+  const stacked = scale > 1.3;
+  // 详情图固定为当前主页卡片曲绘的 120%，而不是大字号时仍硬编码 106px。
+  // 主页 1.0× 为 88px、2.0× 为 64px，因此详情分别为约 106px、77px。
+  const homeCoverSize = scale >= 1.8 ? 64 : 88;
+  const coverSize = Math.round(homeCoverSize * 1.2);
+  const charts = song.ch.slice().sort((a, b) => a.d - b.d);
+  const top = charts.length ? charts[charts.length - 1].d : null;
+
+  const head = el('div', 'detailhead');
+  const line = el('div', 'headline');
+  const cover = el('div', 'cover');
+  cover.style.width = coverSize + 'px'; cover.style.height = coverSize + 'px';
+  if (ART[song.art]) cover.innerHTML = '<img alt="" src="data:image/png;base64,' + ART[song.art] + '">';
+  else cover.innerHTML = '<svg class="note" viewBox="0 0 24 24" style="fill:#8a8a8a"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3z"/></svg>';
+
+  const text = el('div', 'headtext');
+  const title = el('div', 'songtitle', esc(song.t));
+  text.appendChild(title);
+  if (song.k) text.appendChild(el('div', 'kana', esc(song.k)));
+  if (song.a) text.appendChild(el('div', 'author', esc(song.a)));
+
+  if (stacked){ head.appendChild(cover); head.appendChild(el('div', '', '')); head.lastChild.style.height = '12px'; head.appendChild(text); head.style.display = 'block'; }
+  else { line.appendChild(cover); line.appendChild(text); head.appendChild(line); }
+
+  const body = $('detailBody');
+  body.innerHTML = '';
+  body.appendChild(head);
+
+  // 四项元信息：竖排列表（每行「标签 —— 值」）。
+  // 早先是网格，402dp 宽时值会被切半个词；竖排后无论多长都能完整读到。
+  const meta = el('div', 'meta');
+  // 与 CSS 的 .meta .lab 宽度一致（11px * scale * 4.2），否则算出来的可用宽偏大，
+  // 长值（比如角色名）会多留一点余量、字号压不到该压的位置。
+  const labW = 11 * scale * 4.2;
+  const metaW = (body.clientWidth || wide) - 32 - 28 - labW - 10;
+  const lvTone = top == null ? '#fff' : TONES[Math.min(top, 4)];
+  [
+    ['版本', song.r || '—', 'var(--on-card)'],
+    ['BPM', song.b == null ? '—' : String(song.b), 'var(--on-card)'],
+    ['分类', song.g || '—', 'var(--on-card)'],
+  ].forEach(([label, value, color]) => {
+    const cell = el('div', 'cell');
+    cell.appendChild(el('div', 'lab', label));
+    const v = el('div', 'val', esc(value));
+    v.style.color = color;
+    v.style.fontSize = (() => {
+      const base = 13 * scale;
+      return Math.max(11, fitFont(value, base, metaW - 4, 'var(--font-label)', 0.8)).toFixed(2) + 'px';
+    })();
+    cell.appendChild(v);
+    meta.appendChild(cell);
+  });
+  body.appendChild(meta);
+
+  const section = (title, sub) => {
+    const s = el('div', 'section');
+    s.appendChild(el('h2', '', title));
+    s.appendChild(el('p', '', sub));
+    return s;
+  };
+
+  body.appendChild(section('CHARTS', '难度'));
+  if (!charts.length) body.appendChild(el('div', 'section', '<p>当前数据集中没有可用谱面。</p>'));
+  for (const chart of charts){
+    const row = el('div', 'chart');
+    row.style.margin = '0 16px 8px';
+    const bar = el('div', 'bar');
+    bar.style.background = TONES[Math.min(chart.d, 4)];
+    row.appendChild(bar);
+    const mid = el('div', 'mid');
+    mid.appendChild(el('div', 'name', DIFF_NAMES[chart.d] || '?'));
+    const attrs = el('div', 'attrs');
+    attrs.appendChild(el('div', 'designer', chart.g ? '谱师 ' + esc(chart.g) : '暂无谱面信息'));
+    const counts = el('div', 'counts');
+    if (chart.n != null) counts.appendChild(el('span', '', '物量 ' + chart.n));
+    if (chart.b != null) counts.appendChild(el('span', '', '铃铛 ' + chart.b));
+    attrs.appendChild(counts);
+    mid.appendChild(attrs);
+    row.appendChild(mid);
+    const lv = el('div', 'lv', esc(chart.l));
+    lv.style.color = 'var(--on-card)';
+    lv.style.width = (46 * scale) + 'px';
+    row.appendChild(lv);
+    body.appendChild(row);
+  }
+
+  if (song.al && song.al.length){
+    body.appendChild(section('ALIASES', '别名'));
+    const wrap = el('div');
+    wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin:0 16px;';
+    for (const a of song.al){
+      const chip = el('div', '', esc(a));
+      chip.className = 'chip alias-chip';
+      chip.style.cssText = 'background:var(--control-surface);color:var(--on-card);padding:9px;';
+      wrap.appendChild(chip);
+    }
+    body.appendChild(wrap);
+  }
+
+  const details = [];
+  if (song.c) details.push(['章节', song.c]);
+  if (song.p || song.e){
+    const role = [song.p, song.e ? '敌方 ' + song.e : ''].filter(Boolean).join(' ／ ');
+    details.push(['对战角色', role]);
+  }
+  if (song.dd) details.push(['更新日期', song.dd]);
+  if (details.length){
+    body.appendChild(section('INFO', '信息'));
+    const box = el('div', 'infolist');
+    for (const [k, v] of details){
+      const r = el('div', 'inforow');
+      r.appendChild(el('div', 'k', esc(k)));
+      r.appendChild(el('div', 'v', esc(v)));
+      box.appendChild(r);
+    }
+    body.appendChild(box);
+  }
+
+  const links = [];
+  if (song.w) links.push(['攻略 wiki', song.w]);
+  for (const chart of charts){
+    if (chart.u) links.push([DIFF_NAMES[chart.d] + ' 谱面预览', 'https://sdvx.in/ongeki/' + chart.u + '.htm']);
+  }
+  if (links.length){
+    body.appendChild(section('LINKS', '外部链接'));
+    const linkbox = el('div', 'linklist');
+    for (const [label, url] of links){
+      const a = el('a', 'linkrow', '<span>' + esc(label) + '</span><span class="arrow">↗</span>');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      linkbox.appendChild(a);
+    }
+    body.appendChild(linkbox);
+  }
+
+  const spacer = el('div'); spacer.style.height = '96px'; body.appendChild(spacer);
+
+  if (!silent) body.scrollTop = 0;
+}
+
+/* ── 搜索面板 ── */
+function renderSearch(){
+  const genres = [...new Set(SONGS.map(s => s.g).filter(Boolean))].sort();
+  // 角色按 id 去重，再按 chara_id 拆本家（0001–0017）/ 非本家。
+  const charIds = new Map();
+  for (const s of SONGS){ if (s.p && !charIds.has(s.p)) charIds.set(s.p, s.ci || ''); }
+  const isHomeChar = id => { const n = parseInt(id, 10); return n >= 1 && n <= 17; };
+  const homeChars = [...charIds.entries()]
+    .filter(([, id]) => isHomeChar(id))
+    .sort((a, b) => parseInt(a[1], 10) - parseInt(b[1], 10))
+    .map(([name]) => name);
+  const otherChars = [...charIds.keys()].filter(name => !isHomeChar(charIds.get(name)));
+  const releases = [...new Set(SONGS.map(s => s.r).filter(Boolean))];
+  const groups = $('filterGroups');
+  groups.innerHTML = '';
+  const mk = (title, values, set) => {
+    const g = el('div', 'group');
+    g.appendChild(el('h3', '', title));
+    const chips = el('div');
+    chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;';
+    for (const v of values){
+      const b = el('button', 'chip', esc(v.slice(0, 18)));
+      b.setAttribute('aria-pressed', set.has(v) ? 'true' : 'false');
+      b.onclick = () => { set.has(v) ? set.delete(v) : set.add(v); renderSearch(); };
+      chips.appendChild(b);
+    }
+    g.appendChild(chips);
+    return g;
+  };
+  const diffGroup = el('div', 'group');
+  diffGroup.appendChild(el('h3', '', '难度'));
+  const dc = el('div');
+  dc.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;';
+  DIFF_NAMES.forEach((name, i) => {
+    const b = el('button', 'chip', name);
+    b.setAttribute('aria-pressed', state.diffs.has(i) ? 'true' : 'false');
+    b.onclick = () => { state.diffs.has(i) ? state.diffs.delete(i) : state.diffs.add(i); renderSearch(); };
+    dc.appendChild(b);
+  });
+  diffGroup.appendChild(dc);
+  groups.appendChild(diffGroup);
+  groups.appendChild(mk('分类', genres, state.genres));
+  groups.appendChild(mk('版本', releases, state.releases));
+
+  const levels = [...new Set(SONGS.flatMap(s => s.ch.map(c => String(c.l))))]
+    .sort((a, b) => parseFloat(a) - parseFloat(b) || a.localeCompare(b));
+  const lg = el('div', 'group');
+  lg.appendChild(el('h3', '', '等级'));
+  const lc = el('div');
+  lc.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;';
+  for (const lv of levels){
+    const b = el('button', 'chip', esc(lv));
+    b.setAttribute('aria-pressed', state.levels.has(lv) ? 'true' : 'false');
+    b.onclick = () => { state.levels.has(lv) ? state.levels.delete(lv) : state.levels.add(lv); renderSearch(); };
+    lc.appendChild(b);
+  }
+  lg.appendChild(lc);
+  groups.appendChild(lg);
+  const charGroup = el('div', 'group');
+  charGroup.appendChild(el('h3', '', '角色'));
+  const charChips = values => {
+    const wrap = el('div');
+    wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;';
+    for (const v of values){
+      const b = el('button', 'chip', esc(v.slice(0, 18)));
+      b.setAttribute('aria-pressed', state.chars.has(v) ? 'true' : 'false');
+      b.onclick = () => { state.chars.has(v) ? state.chars.delete(v) : state.chars.add(v); renderSearch(); };
+      wrap.appendChild(b);
+    }
+    return wrap;
+  };
+  if (homeChars.length) charGroup.appendChild(charChips(homeChars));
+  // 本家与非本家之间空一行。
+  if (homeChars.length && otherChars.length){
+    const gap = el('div');
+    gap.style.height = '18px';
+    charGroup.appendChild(gap);
+  }
+  if (otherChars.length) charGroup.appendChild(charChips(otherChars));
+  groups.appendChild(charGroup);
+
+  // 查询顺序固定为：难度、分类、版本、等级、角色。
+  // 行条（あ〜ん / 版本跳转）原本挂在「曲名／角色／版本」排序下，那几种
+  // 排序已下线，行条一并移除。
+
+  const count = state.genres.size + state.chars.size + state.releases.size + state.diffs.size + state.levels.size;
+  $('countStatus').textContent = '结果 ' + filtered().length + ' 首 · 筛选 ' + count + ' 项';
+  const labelOfList = (items, key) =>
+    (items.find(it => it.k === key) || items[0]).label;
+  $('sortStatus').textContent = state.q.trim()
+    ? '搜索结果 · 相关度优先'
+    : '列表排序 · ' + labelOfList(TAB_GROUPS, currentTabGroup()) + ' › ' +
+      labelOfList(TAB_SORTS, currentTabSort());
+
+  // 三栏常显；快照里没有数据的项照表格列出但 disabled（灰）。
+  // 搜索态下排序让位给相关度，三栏一起禁用。
+  const searching = !!state.q.trim();
+  const fillSort = (id, items, cur) => {
+    const sel = $(id);
+    sel.innerHTML = items.map(it =>
+      '<option value="' + it.k + '"' + (it.k === cur ? ' selected' : '') +
+      (it.on ? '' : ' disabled') + '>' + esc(it.label) + '</option>').join('');
+    sel.disabled = searching;
+  };
+  fillSort('tabGroupSel', TAB_GROUPS, state.tabGroup);
+  fillSort('tabSortSel', TAB_SORTS, state.tabSort);
+  fillSort('rivalSel', RIVAL_SCORES, state.rival);
+}
+
+/* ── 设置 / 关于 ── */
+const SCHEME_META = [
+  ['official','官方混排','遵循官网：拉丁与数字用 Josefin Sans，日文用 M PLUS 1p，中文缺字用 MiSans 补全。'],
+  ['classic','旧版游戏圆体 · 系统界面字','曲目内容与数字保留原字体，界面文案使用系统字体。'],
+  ['system','全部系统字体','不使用随包字体，统一交给系统渲染。'],
+];
+function renderSettings(){
+  const host = $('schemeList');
+  host.innerHTML = '';
+  for (const [key, title, desc] of SCHEME_META){
+    const row = el('div', 'radio');
+    row.setAttribute('role', 'radio');
+    row.setAttribute('aria-checked', state.scheme === key ? 'true' : 'false');
+    row.innerHTML = '<div class="dot"></div><div><div class="tt">' + esc(title) + '</div><div class="ds">' + esc(desc) + '</div></div>';
+    row.onclick = () => { applyScheme(key); $('schemeSel').value = key; renderSettings(); };
+    host.appendChild(row);
+  }
+}
+function renderAbout(){
+  const host = $('aboutBody');
+  const charts = SONGS.reduce((n, s) => n + s.ch.length, 0);
+  const genres = new Set(SONGS.map(s => s.g)).size;
+  const rowsHTML = (pairs) => pairs.map(([k,v]) => '<div class="inforow"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>').join('');
+  host.innerHTML = `
+    <div class="field"><h3>数据更新</h3><div class="infolist" style="margin:0;background:transparent">
+      ${rowsHTML([['状态','已就绪'],['曲目 / 谱面', SONGS.length + ' / ' + charts],['分类', genres],
+         ['数据快照','2026.10.15'],['曲库来源','otoge-db オンゲキ']])}
+      </div></div>
+    <div class="field" style="margin-top:16px"><h3>下载线路</h3><div class="infolist" style="margin:0;background:transparent">
+      ${rowsHTML([['1','jsDelivr · Fastly'],['2','jsDelivr · Cloudflare'],['3','jsDelivr · Gcore'],['4','GitHub Raw']])}
+      </div><p class="foot">以上为原生应用下载线路。此单文件网页使用内置快照，不支持在线更新或删除内置曲库，也不创建曲库磁盘缓存。</p>
+      <div class="btnrow"><button class="btn fill" disabled>检查更新（原生应用）</button>
+      <button class="btn out" disabled>删除本地曲库（原生应用）</button></div></div>
+    <div class="field" style="margin-top:16px"><h3>数据集</h3><div class="infolist" style="margin:0;background:transparent">
+      ${rowsHTML([['曲目', SONGS.length],['可用谱面', charts],['分类', genres],['本地体积','{{DATA_SIZE}}（内置快照）'],['应用版本','{{APP_VERSION}}']])}
+      </div><button class="btn fill about-action" id="viewLicenseBtn">查看全文许可</button>
+      <p class="foot">本软件使用了 MiSans 字体。</p></div>`;
+  $('viewLicenseBtn').onclick = () => go('license');
+}
+
+/* ── 页面切换 ──
+   只有一层 .screen 可见，其余 display:none。切换时给进入的一层做一次滑动，
+   退回去时反向滑 —— 比直接 show/hide 像真机。 */
+function show(name){
+  const current = document.querySelector('.screen:not(.hidden)');
+  const target = $('s-' + name);
+  if (!target) return;
+  if (current && current !== target && current.contains(document.activeElement)) document.activeElement.blur();
+  document.querySelectorAll('.screen').forEach(screen => {
+    const hidden = screen !== target;
+    screen.classList.toggle('hidden', hidden);
+    screen.inert = hidden;
+    screen.setAttribute('aria-hidden', String(hidden));
+  });
+  target.classList.remove('hidden');
+  target.classList.remove('slide-in');
+  void target.offsetWidth;           // 强制重排，让动画能重复触发
+  target.classList.add('slide-in');
+  if (name === 'home') renderHome();
+  if (name === 'search') renderSearch();
+  if (name === 'settings') renderSettings();
+  if (name === 'about') renderAbout();
+}
+function go(name){
+  if (state.stack[state.stack.length - 1] !== name) state.stack.push(name);
+  show(name);
+}
+function back(){
+  if (state.stack.length > 1) state.stack.pop();
+  show(state.stack[state.stack.length - 1] || 'home');
+}
+
+/* ── 事件绑定 ── */
+$('btnMenu').onclick = () => go('menu');
+$('menuSettings').onclick = () => go('settings');
+$('menuAbout').onclick = () => go('about');
+$('clearFiltersBtn').onclick = () => {
+  state.genres.clear(); state.chars.clear(); state.releases.clear();
+  state.diffs.clear(); state.levels.clear();
+  renderSearch();
+};
+$('applyFiltersBtn').onclick = back;
+$('btnSearch').onclick = () => go('search');
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = back);
+
+$('q').addEventListener('input', (e) => { state.q = e.target.value; renderSearch(); });
+$('qClear').onclick = () => { $('q').value = ''; state.q = ''; renderSearch(); };
+$('tabGroupSel').onchange = (e) => {
+  state.tabGroup = e.target.value;
+  renderSearch(); renderHome();
+};
+$('tabSortSel').onchange = (e) => {
+  state.tabSort = e.target.value;
+  renderSearch(); renderHome();
+};
+$('rivalSel').onchange = (e) => { state.rival = e.target.value; renderSearch(); };
+$('resetBtn').onclick = () => {
+  state.tabGroup = 'genre'; state.tabSort = 'recommended'; state.rival = 'technical';
+  renderSearch(); renderHome();
+};
+$('scaleRange').oninput = (e) => applyScale(parseFloat(e.target.value));
+$('schemeSel').onchange = (e) => { applyScheme(e.target.value); renderSettings(); };
+$('devToggle').onclick = () => {
+  const bar = $('toolbar');
+  bar.dataset.open = bar.dataset.open === 'true' ? 'false' : 'true';
+  bar.inert = bar.dataset.open !== 'true';
+};
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || (e.key === 'Backspace' && document.activeElement.tagName !== 'INPUT')) back();
+});
+// 侧滑返回
+let touchX = null, touchY = null;
+document.getElementById('stage').addEventListener('touchstart', (e) => {
+  touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
+}, { passive: true });
+document.getElementById('stage').addEventListener('touchend', (e) => {
+  if (touchX == null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  const dy = Math.abs(e.changedTouches[0].clientY - touchY);
+  if (touchX < 40 && dx > 70 && dy < 60) back();
+  touchX = touchY = null;
+}, { passive: true });
+
+/* 斜带：中心 x=.23W，纵向基准=.64H，倾角 -20°；
+   偏移 0/20/60，厚度 10/30/10；深色 alpha=.22，浅色 alpha=1。 */
+function drawBands(){
+  const stage = document.getElementById('stage');
+  const cv = document.getElementById('bands');
+  const w = stage.clientWidth;
+  const topPx = stage.clientHeight * .64;
+  // 保留旋转后伸向基准线上方的部分，与 Flutter 的完整矩形绘制一致。
+  const overhang = Math.ceil(w * 1.5 * Math.sin(20 * Math.PI / 180));
+  const h = stage.clientHeight - topPx + overhang + 80;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.style.top = (topPx - overhang) + 'px';
+  cv.style.height = h + 'px';
+  cv.width = Math.max(1, Math.round(w * dpr));
+  cv.height = Math.max(1, Math.round(h * dpr));
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const rad = -20 * Math.PI / 180;
+  // App 从 left = 23%W - 150%W 起画一条 300%W 长的带；这里以 23%W 为旋转锚点、
+  // 向左右各铺 150%W，旋转后右端才够长，不会在屏幕右侧留缺口。
+  const draw = (offset, thickness, color) => {
+    g.save();
+    g.translate(w * .23, overhang + offset + thickness / 2);
+    g.rotate(rad);
+    g.globalAlpha = document.documentElement.dataset.theme === 'dark' ? .22 : 1;
+    g.fillStyle = color;
+    g.fillRect(-w * 1.5, -thickness / 2, w * 3, thickness);
+    g.restore();
+  };
+  const css = getComputedStyle(document.documentElement);
+  draw(0, 10, css.getPropertyValue('--yellow').trim());
+  draw(20, 30, css.getPropertyValue('--green').trim());
+  draw(60, 10, css.getPropertyValue('--yellow').trim());
+}
+
+// 视口高度（移动端地址栏会让 100vh 抖动）。斜带钉在视口 .64H 处，与滚动无关。
+function syncVh(){
+  const stage = document.getElementById('stage');
+  document.getElementById('backdrop').style.setProperty('--vh', stage.clientHeight + 'px');
+  stage.style.setProperty('--safe-top', '0px');
+  stage.style.setProperty('--safe-bottom', '0px');
+  drawBands();
+}
+window.addEventListener('resize', () => { syncVh(); renderHome(); });
+syncVh();
+installOutlines();
+
+/* 每翻一页时先量一次首页 —— 卡片宽度依赖真实 clientWidth，
+   量出来的字号之后进详情页也能复用，不会出现「第一屏字大、第二屏变小」。 */
+requestAnimationFrame(() => renderHome());
+
+/* 给自动截图用的钩子：file://...index.html#detail:0 / #search / #settings，
+   参数里可以带 @2 表示把系统字号拉到 2.0×，用来验证大字下的断行。 */
+function applyHash(){
+  const h = (location.hash || '').replace('#', '');
+  if (!h) return;
+  const [name, rawArg] = h.split(':');
+  const [arg, sc] = (rawArg || '').split('@');
+  const target = name.split('@')[0];        // #search@2 —— 没有冒号时也要认得出来
+  if (sc) applyScale(parseFloat(sc));
+  else if (!rawArg && name.includes('@')) applyScale(parseFloat(name.split('@')[1]));
+  if (target === 'detail'){ openDetail(SONGS[Number(arg) || 0]); }
+  else if (['menu','search','settings','about','license','home'].includes(target)){ go(target); }
+}
+applyScheme('official');
+applyHash();
+
+/* 字体是 base64 内联的 woff2，解析完才能拿去量字宽。
+   在没就绪前量出来的宽度偏小，字号就会「看着没缩、实际溢出」——就绪后重画一次。 */
+if (document.fonts && document.fonts.ready){
+  document.fonts.ready.then(() => {
+    renderHome();
+    if (state.stack.includes('detail') && state.currentDetail) openDetail(state.currentDetail, true);
+  });
+}
+
+/* ── 自动验收钩子 ──
+   给 headless 截图脚本用：把首页里「折行」与「右溢」的节点数出来。
+   右溢的判据是每一行 Range.getClientRects() 的最右缘越过节点右边界 ——
+   scrollWidth 对折行文字恒等于 clientWidth，量不出「画到卡片外面」。 */
+window.__audit = function(){
+  const out = { songs: SONGS.length, list: 0, titleWrapped: 0, titleOver: 0, artistWrapped: 0, artistOver: 0, items: [] };
+  const cards = document.querySelectorAll('#homeList .card');
+  out.list = cards.length;
+  const measure = (node) => {
+    const box = node.getBoundingClientRect();
+    const rg = document.createRange();
+    rg.selectNodeContents(node);
+    const rects = [...rg.getClientRects()];
+    const maxRight = rects.length ? Math.max(...rects.map(r => r.right)) : box.right;
+    const lh = parseFloat(getComputedStyle(node).lineHeight) || parseFloat(getComputedStyle(node).fontSize) * 1.35;
+    return { lines: rects.length, over: Math.round(maxRight - box.right), wrapped: box.height > lh * 1.55 };
+  };
+  out.stageW = document.getElementById('stage').clientWidth;
+  out.scale = state.scale;
+  cards.forEach((card) => {
+    const t = card.querySelector('.title'), a = card.querySelector('.artist');
+    if (!t) return;
+    const mt = measure(t);
+    if (mt.wrapped) out.titleWrapped++;
+    if (mt.over > 1){ out.titleOver++; out.items.push({ t: t.textContent.slice(0, 26), fs: t.style.fontSize, over: mt.over }); }
+    if (a){
+      const ma = measure(a);
+      if (ma.wrapped) out.artistWrapped++;
+      if (ma.over > 1) out.artistOver++;
+    }
+  });
+  return out;
+};
+</script>
+</body></html>
