@@ -3,7 +3,7 @@
     <!-- 使用自绘的绿色安卓机器人图标（mipmap-anydpi-v26 为自适应图标，
          低版本回落到各密度 ic_launcher.png），不再使用 Flutter 蓝色 logo。 -->
     <application
-        android:label="test"
+        android:label="Ongeki Crate"
         android:icon="@mipmap/ic_launcher"
         android:name="${applicationName}">
         <activity
