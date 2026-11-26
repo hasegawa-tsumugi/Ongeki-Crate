@@ -965,6 +965,63 @@ class _SearchInput extends StatelessWidget {
       );
 }
 
+/// 长按复制的统一反馈：先写剪贴板，再在底部弹一条短提示。
+///
+/// 连续长按多首曲目时，前一条还在退场就会叠上第二条 —— 先 `hideCurrentSnackBar`
+/// 把上一条收掉，否则提示会排成一条队列慢慢往下滚。
+void _copyToClipboard(BuildContext context, String text, String label) {
+  Clipboard.setData(ClipboardData(text: text));
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text('已复制$label'),
+      duration: const Duration(milliseconds: 1200),
+      // floating 而非贴底：底栏是浮在内容上的，贴底的提示会压在玻璃上。
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+    ));
+}
+
+/// 详情页长按复制的正文。
+///
+/// 只写有值的字段：残缺条目（例如只有 id 与曲名的）不会输出「分类：—」这种
+/// 空行。难度按可玩谱面顺序排，难度段与其它信息之间空一行。
+String _songClipText(Song song) {
+  final lines = <String>[song.title];
+  if (song.titleKana != null) lines.add(song.titleKana!);
+  if ((song.artist ?? '').trim().isNotEmpty) lines.add(song.artist!.trim());
+  lines.add('');
+
+  void put(String name, String? value) {
+    if (value == null || value.trim().isEmpty) return;
+    lines.add('$name：$value');
+  }
+
+  put('分类', song.genre);
+  put('版本', song.releaseTag);
+  put('BPM', song.bpm?.toString());
+  final charts = song.playableCharts;
+  if (charts.isNotEmpty) {
+    lines.add('');
+    for (final chart in charts) {
+      final name = difficultyNames[chart.difficulty.clamp(0, 4)];
+      final notes = chart.noteCount == null ? '' : '（${chart.noteCount} notes）';
+      lines.add('$name ${song.displayLevel(chart)}$notes');
+    }
+  }
+  final enemy = [
+    if (song.character != null) song.character!,
+    if (song.enemyLevel != null) 'Lv ${song.enemyLevel}',
+    if (song.enemyType != null) song.enemyType!,
+  ].join(' ');
+  if (enemy.isNotEmpty) {
+    lines.add('');
+    lines.add('对战角色：$enemy');
+  }
+  put('更新日期', song.dateAdded);
+  return lines.join('\n');
+}
+
 class SongCardView extends StatelessWidget {
   const SongCardView(
       {super.key,
@@ -1027,6 +1084,8 @@ class SongCardView extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
+            // 长按复制曲名（2026-11-26）。卡片上没有别的长按语义，直接给。
+            onLongPress: () => _copyToClipboard(context, song.title, '曲名'),
             child: ClipPath(
               clipper: const _SongCardClipper(18),
               child: CustomPaint(
@@ -1482,7 +1541,7 @@ class DetailScreen extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Jacket(artwork: song.artwork, size: jacketSize),
+                      _jacket(context, jacketSize),
                       const SizedBox(height: 12),
                       _titleBlock(context, fitTitle: true),
                     ],
@@ -1491,21 +1550,27 @@ class DetailScreen extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Jacket(artwork: song.artwork, size: jacketSize),
+                      _jacket(context, jacketSize),
                       const SizedBox(width: 12),
                       Expanded(child: _titleBlock(context)),
                     ],
                   ),
                 const SizedBox(height: 16),
-                Chamfer(
-                  fill: AppPalette.card,
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    children: [
-                      AppInfoRow('版本', song.releaseTag ?? '—'),
-                      AppInfoRow('BPM', song.bpm?.toString() ?? '—'),
-                      AppInfoRow('分类', song.genre ?? '—'),
-                    ],
+                // 长按这一块（版本 / BPM / 分类）复制整首歌的信息，与曲名区
+                // 同一份文本 —— 手指落在哪儿都能复制到同样的东西。
+                GestureDetector(
+                  onLongPress: () =>
+                      _copyToClipboard(context, _songClipText(song), '曲目信息'),
+                  child: Chamfer(
+                    fill: AppPalette.card,
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      children: [
+                        AppInfoRow('版本', song.releaseTag ?? '—'),
+                        AppInfoRow('BPM', song.bpm?.toString() ?? '—'),
+                        AppInfoRow('分类', song.genre ?? '—'),
+                      ],
+                    ),
                   ),
                 ),
                 const _Section(title: 'CHARTS', name: '难度'),
@@ -1624,6 +1689,8 @@ class DetailScreen extends StatelessWidget {
 
   /// 曲名 / 读音 / 作者三行：横排时挤在封面右侧，大字号堆叠时占满整行。
   ///
+  /// 整块可长按复制 —— 手指落在曲名或作者上都算「长按这首歌」。
+  ///
   /// `fitTitle` 用于堆叠布局：曲名占满整行后仍可能差几个像素放不下，
   /// 「GO!GO!ラブリズム♥」会把结尾的 ♥ 挤到单独一行（实测 390@1.6 就是这样）。
   /// 单行 + scaleDown 比让装饰符号掉行好，也避免在拉丁词中间断成「GO! G / O!」。
@@ -1635,7 +1702,7 @@ class DetailScreen extends StatelessWidget {
       color: context.isDark ? context.ink : context.cardInk,
       fontWeight: FontWeight.bold,
     );
-    return Column(
+    final block = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (fitTitle)
@@ -1688,6 +1755,90 @@ class DetailScreen extends StatelessWidget {
                 color: context.isDark ? context.inkFaint : context.cardFaint),
           ),
       ],
+    );
+    return GestureDetector(
+      onLongPress: () =>
+          _copyToClipboard(context, _songClipText(song), '曲目信息'),
+      child: block,
+    );
+  }
+
+  /// 曲绘：点一下全屏查看。没有曲绘（残缺条目）时不响应点击。
+  Widget _jacket(BuildContext context, double size) {
+    final artwork = song.artwork;
+    final image = _Jacket(artwork: artwork, size: size);
+    if (artwork == null) return image;
+    return GestureDetector(
+      key: const ValueKey('detail-jacket'),
+      onTap: () => Navigator.of(context).push(
+        AppRoute(builder: (_) => _JacketViewer(artwork: artwork)),
+      ),
+      child: image,
+    );
+  }
+}
+
+/// 曲绘的全屏查看页：黑底、可双指放大，点任意处或右上角关闭。
+///
+/// 复用 `_Jacket` 而不是自己再写一份 `CachedNetworkImage` —— 换线路重试、
+/// 缓存键、按尺寸解码那套逻辑都在里面，重复一遍必然走样。
+class _JacketViewer extends StatelessWidget {
+  const _JacketViewer({required this.artwork});
+  final String artwork;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              // 曲绘是方形的，让它在屏幕上尽可能大，但留出一点边距。
+              onTap: () => Navigator.pop(context),
+              child: SafeArea(
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: SizedBox.expand(
+                    child: Center(
+                      child: LayoutBuilder(builder: (context, constraints) {
+                        final side = math.min(
+                              constraints.maxWidth,
+                              constraints.maxHeight,
+                            ) -
+                            24;
+                        return _Jacket(artwork: artwork, size: side);
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: SafeArea(
+              child: Semantics(
+                button: true,
+                label: '关闭',
+                child: InkWell(
+                  onTap: () => Navigator.pop(context),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      color: Color(0x66000000),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 22),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -189,20 +189,26 @@ class LiquidGlassBar extends StatelessWidget {
               // 右侧搜索钮：同一个库的 LiquidButton，圆角胶囊 + 等宽内容 = 正圆。
               // 不传 tint ⇒ 无色玻璃（沿用本项目"按钮不要颜色"的要求），
               // 但按压挤压、跟手高光、拖拽形变都来自库本身。
-              LiquidButton(
-                key: const ValueKey('search-button'),
-                onPressed: onSearch,
-                backdrop: backdrop,
-                height: height,
-                padding: EdgeInsets.zero,
-                tooltip: '搜索与筛选',
-                isInteractive: !MediaQuery.disableAnimationsOf(context),
-                highlight: _rim,
-                child: SizedBox(
-                  width: height,
+              //
+              // 不传 `tooltip`：库会因此包一层 Tooltip，长按弹出一块文字说明，
+              // 这个底栏上不该有（2026-11-26 要求）。无障碍标签改由外层
+              // Semantics 提供，读屏仍然读得出这是搜索键。
+              Semantics(
+                label: '搜索与筛选',
+                child: LiquidButton(
+                  key: const ValueKey('search-button'),
+                  onPressed: onSearch,
+                  backdrop: backdrop,
                   height: height,
-                  child: Center(
-                    child: Icon(Icons.search_rounded, size: 28, color: content),
+                  padding: EdgeInsets.zero,
+                  isInteractive: !MediaQuery.disableAnimationsOf(context),
+                  highlight: _rim,
+                  child: SizedBox(
+                    width: height,
+                    height: height,
+                    child: Center(
+                      child: Icon(Icons.search_rounded, size: 28, color: content),
+                    ),
                   ),
                 ),
               ),
