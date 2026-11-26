@@ -16,12 +16,12 @@
 library;
 
 /// 主版本号，例如 `0.1.2`。
-const String appVersion = '0.1.2';
+const String appVersion = '0.1.3';
 
 /// beta 序号。**0 = 正式版**（versionName 不带 `-beta` 后缀）。
 ///
 /// 改这个数字就是「当前版本的第几个测试包」。正式版把它置 0。
-const int appBeta = 0;
+const int appBeta = 1;
 
 /// 完整版本标签，例如 `0.1.2-beta1` / 正式版 `0.1.2`。
 ///
